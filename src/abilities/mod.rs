@@ -390,7 +390,8 @@ impl Battle {
         let ident = self.ident(t);
         let by_other = source != Some(t);
         let quiet = self.effect_has_secondaries(effect);
-        let name = self.ability_name(t);
+        let dex = self.dex.clone();
+        let name = dex.ability(self.mon(t).ability).name.as_str();
         match self.ability_kind(t) {
             AbilityKind::ClearBody if by_other => {
                 let mut blocked = false;

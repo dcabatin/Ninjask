@@ -405,6 +405,7 @@ impl Battle {
 
     /// `ModifySpe` from abilities and the Unburden volatile: Swift Swim and
     /// the other weather abilities, Unburden, Quick Feet, Surge Surfer.
+    #[inline(always)]
     pub(crate) fn ability_speed_mod(&self, r: MonRef) -> Option<(u32, u32)> {
         let m = self.mon(r);
         // The raw ability first: most have no Speed handler, and then

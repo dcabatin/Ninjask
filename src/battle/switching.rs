@@ -365,7 +365,8 @@ impl Battle {
     /// `check_win` false (after a move's hits, while its user still stands)
     /// the win waits until recoil and Life Orb have been applied.
     pub(crate) fn faint_messages_check(&mut self, check_win: bool) {
-        if self.ended {
+        // Nothing queued: no faint, no win to check, no AfterFaint.
+        if self.ended || self.faint_queue.is_empty() {
             return;
         }
         let mut queue = std::mem::take(&mut self.faint_queue);
@@ -433,6 +434,11 @@ impl Battle {
             self.check_win();
         }
         self.run_after_faint(&queue);
+        // Keep the buffer for the next faints.
+        if self.faint_queue.is_empty() {
+            queue.clear();
+            self.faint_queue = queue;
+        }
     }
 
     pub(crate) fn check_win(&mut self) {

@@ -89,8 +89,27 @@ impl Battle {
     pub(crate) fn run_update(&mut self) {
         // Usually no handler can act: then only the order's draws (and its
         // trace) matter, and without a speed tie it makes none.
-        if !self.any_active(|b, r| b.update_may_act(r)) {
-            self.each_event_order_draws();
+        // One pass over the active Pokémon: whether a handler may act, and
+        // whether two speeds tie.
+        let mut speeds = [0i32; crate::state::MAX_ACTIVE];
+        let (mut n, mut tie, mut acts) = (0, false, false);
+        for (s, side) in self.sides.iter().enumerate() {
+            for (slot, m) in side.mons.iter().enumerate().take(side.n_active) {
+                if m.is_active && !m.fainted {
+                    acts |= self.update_may_act((s, slot));
+                    tie |= speeds[..n].contains(&m.speed);
+                    if n < speeds.len() {
+                        speeds[n] = m.speed;
+                        n += 1;
+                    }
+                }
+            }
+        }
+        if !acts {
+            // The sort draws only between equal speeds.
+            if tie || self.rng.trace.is_some() {
+                self.each_event_order();
+            }
             return;
         }
         for r in self.each_event_order() {
