@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- LICENSE: the copyright holder's name is corrected to David Cabatingan
+  (0.1.0's packages carry the misspelled name).
+
 ## 0.1.0
 
 First public release.
