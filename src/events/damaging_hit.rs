@@ -109,7 +109,7 @@ impl Battle {
         let contact = mv.has(MoveFlag::Contact);
         let dex = self.dex.clone();
         let type_name = dex.type_names[move_type as usize].as_str();
-        for (_, _, h) in handlers {
+        for &(_, _, h) in handlers.iter() {
             match h {
                 HitHandler::Thaw(t) => {
                     if self.mon(t).status == Status::Frz {

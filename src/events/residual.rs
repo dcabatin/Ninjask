@@ -543,7 +543,7 @@ impl Battle {
         self.turn_state.sorting = false;
         self.speed_sort_by(&mut handlers, compare_handlers);
 
-        for h in handlers {
+        for &h in handlers.iter() {
             match h.kind {
                 HandlerKind::GrassyHeal(r)
                 | HandlerKind::Status(r, _)

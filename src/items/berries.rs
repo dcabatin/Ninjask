@@ -332,7 +332,7 @@ impl Battle {
         if hs.len() > 1 {
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
         }
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             match h {
                 None => self.after_use_item(r),
                 Some(h) => self.symbiosis(h, r),

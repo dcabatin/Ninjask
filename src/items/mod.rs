@@ -174,7 +174,7 @@ impl Battle {
             return;
         }
         self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.2, &b.2));
-        for (r, item, _) in hs {
+        for &(r, item, _) in hs.iter() {
             if item {
                 self.white_herb_check(r);
             } else {
@@ -388,7 +388,7 @@ impl Battle {
         let physical = mv.category == Category::Physical;
         let special = mv.category == Category::Special;
         let mut chain = Chain::ONE;
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             match h {
                 H::Metronome => {
                     if let Some((n, d)) = self.metronome_on_modify_damage(src) {

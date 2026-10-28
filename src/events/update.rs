@@ -40,7 +40,7 @@ impl Battle {
         if keyed.len() > 1 {
             self.speed_sort_by(&mut keyed, |a, b| compare_mod(&a.0, &b.0));
         }
-        for (_, k) in keyed {
+        for &(_, k) in keyed.iter() {
             match k {
                 ResidualVol::Attract => self.volatiles_on_update(r),
                 ResidualVol::Fling => self.fling_on_update(r),

@@ -133,7 +133,7 @@ impl Battle {
             }
         }
         self.speed_sort_by(&mut handlers, compare_secondary_handlers);
-        for (t, h, ..) in handlers {
+        for &(t, h, ..) in handlers.iter() {
             match h {
                 // The freeze status thaws on a thawsTarget move.
                 SecondaryHandler::Thaw => {
@@ -168,7 +168,7 @@ impl Battle {
             }
         }
         self.speed_sort_by(&mut hs, compare_secondary_handlers);
-        for (t, ..) in hs {
+        for &(t, ..) in hs.iter() {
             self.berserk_on_after_move_secondary(src, t);
         }
     }
@@ -682,7 +682,7 @@ impl Battle {
             return;
         }
         self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             match h {
                 H::WhiteHerb(h) => self.white_herb_check(h),
                 H::Opportunist(h) => self.opportunist_release(h),

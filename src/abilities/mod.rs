@@ -838,7 +838,7 @@ impl Battle {
         let unblockable = matches!(mv.target, Target::FoeSide)
             || (mv.target == Target::All
                 && !matches!(mv.id.as_str(), "perishsong" | "flowershield" | "rototiller"));
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             let Some(h) = h else {
                 self.metronome_on_try_move(src, mv);
                 continue;

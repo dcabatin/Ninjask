@@ -125,7 +125,7 @@ impl Battle {
             }
             a.5 as i64 - b.5 as i64
         });
-        for (r, kind, _, _, _, _) in handlers {
+        for &(r, kind, _, _, _, _) in handlers.iter() {
             if self.mon(r).fainted || !self.mon(r).is_active {
                 continue;
             }
@@ -554,7 +554,7 @@ impl Battle {
                 hs.push((ModHandler::new(0, self.mon(r).speed, 2), None));
             }
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.0, &b.0));
-            for (_, holder) in hs {
+            for &(_, holder) in hs.iter() {
                 match holder {
                     Some(h) => self.receiver(h, r),
                     None => self.destiny_bond_faint(r),

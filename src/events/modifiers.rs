@@ -155,7 +155,7 @@ impl Battle {
         let type_name = dex.type_names[move_type as usize].as_str();
         let mut chain = Chain::ONE;
         let mut aura_booster = None;
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             let m = match h {
                 H::Move => self.move_base_power_mod(src, tgt, kind),
                 H::HelpingHand => {
