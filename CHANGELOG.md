@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- README: speed figures re-measured after the throughput work.
 - `examples/quickstart.rs`, and `--log` for `examples/bench.rs` (logging on).
 - `refsim/bench_showdown.js`: Showdown's own throughput on the same random
   games, for comparison.

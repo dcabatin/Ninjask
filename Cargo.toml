@@ -2,7 +2,7 @@
 name = "ninjask"
 version = "0.1.0"
 edition = "2021"
-description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 200 times faster"
+description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 250 times faster"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/dcabatin/Ninjask"
