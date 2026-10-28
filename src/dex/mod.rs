@@ -313,6 +313,9 @@ pub struct Dex {
     pub ids: KnownIds,
     /// Numeric fields of Showdown conditions (duration, residual orders...).
     conditions: IdMap<IdMap<f64>>,
+    /// Per item, its `mega_stone` pairs as species: the species named as the
+    /// base, and the Mega forme (`None` for a name not in the dex).
+    mega_forms: Vec<Vec<(Option<SpeciesId>, Option<SpeciesId>)>>,
 }
 
 fn s(v: &Value, k: &str) -> String {
@@ -792,8 +795,24 @@ impl Dex {
             item_handlers,
             ids: KnownIds::default(),
             conditions,
+            mega_forms: Vec::new(),
         };
         dex.ids = KnownIds::resolve(&dex);
+        // Species names are unique: the first species with a name is the one.
+        let mut by_name: HashMap<&str, SpeciesId> = HashMap::new();
+        for (i, sp) in dex.species.iter().enumerate() {
+            by_name.entry(sp.name.as_str()).or_insert(i as SpeciesId);
+        }
+        dex.mega_forms = dex
+            .items
+            .iter()
+            .map(|it| {
+                it.mega_stone
+                    .iter()
+                    .map(|(base, mega)| (by_name.get(base.as_str()).copied(), dex.species_id(mega)))
+                    .collect()
+            })
+            .collect();
         Ok(dex)
     }
 
@@ -819,6 +838,16 @@ impl Dex {
     }
     pub fn nature(&self, name: &str) -> Nature {
         self.natures.get(&to_id(name)).copied().unwrap_or_default()
+    }
+
+    /// The Mega forme an item's Mega Stone turns `base` into: the first of
+    /// its `mega_stone` pairs whose base is that species' name, resolved
+    /// (`None` without one, or when the forme is not in the dex).
+    pub fn mega_forme(&self, item: ItemId, base: SpeciesId) -> Option<SpeciesId> {
+        self.mega_forms[item as usize]
+            .iter()
+            .find(|(b, _)| *b == Some(base))?
+            .1
     }
 
     pub fn species(&self, id: SpeciesId) -> &Species {

@@ -37,6 +37,9 @@ pub type MonRef = (usize, usize);
 pub type PerActive<T> = ArrayVec<T, MAX_ACTIVE>;
 /// A list of active Pokémon.
 pub type ActiveList = PerActive<MonRef>;
+/// A short list (event handlers, the Pokémon a move reached) held inline,
+/// spilling to the heap past `N`.
+pub(crate) type Small<T, const N: usize = 4> = smallvec::SmallVec<[T; N]>;
 
 /// Showdown's prefix for a choice refused on information the request hid.
 pub const UNAVAILABLE: &str = "[Unavailable choice] ";
@@ -740,7 +743,7 @@ impl Battle {
             ActionKind::RunSwitch { side, mon } => {
                 switch_hp = Some(((side, mon), self.mon((side, mon)).hp));
                 // Batch consecutive runSwitch actions (Showdown `runSwitch`).
-                let mut switchers = vec![(side, mon)];
+                let mut switchers: Small<MonRef> = smallvec::smallvec![(side, mon)];
                 while let Some(ActionKind::RunSwitch { side, mon }) =
                     self.queue.front().map(|a| a.kind)
                 {
@@ -958,7 +961,7 @@ impl Battle {
             m.vol.heal_block > 0,
             m.vol.torment,
         ];
-        let mut keys: Vec<ModHandler> = own
+        let mut keys: Small<ModHandler> = own
             .iter()
             .filter(|&&on| on)
             .map(|_| ModHandler::new(0, m.speed, 2))
@@ -986,7 +989,8 @@ impl Battle {
             .item
             .map(|i| self.dex.item(i).name.clone())
             .unwrap_or_default();
-        let sp = self.dex.species(mega).clone();
+        let dex = self.dex.clone();
+        let sp = dex.species(mega);
         {
             let m = self.mon_mut(r);
             // formeChange(isPermanent): the Mega becomes the base species.

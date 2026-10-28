@@ -1,6 +1,7 @@
 //! The end-of-turn residual phase (`fieldEvent('Residual')`): collecting the
 //! handlers and running them in order.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::kinds::EffectRef;
@@ -127,7 +128,7 @@ impl Battle {
     /// Showdown `fieldEvent('Residual')` for the effects the engine models.
     /// One Pokémon's `onResidual` handlers in Showdown's collection order:
     /// status, volatiles, ability, item, then Grassy Terrain's heal.
-    fn mon_residual_handlers(&self, r: MonRef, handlers: &mut Vec<Handler>) {
+    fn mon_residual_handlers(&self, r: MonRef, handlers: &mut Small<Handler, 16>) {
         let order = |b: &Battle, id: &str, field: &str, default: u32| -> u64 {
             b.dex
                 .cond_num(id, field)
@@ -147,7 +148,7 @@ impl Battle {
             });
         }
         // The volatiles, in the order they were added.
-        let mut vols: Vec<(u32, Handler)> = Vec::new();
+        let mut vols: Small<(u32, Handler)> = Small::new();
         let mut add = |v: ResidualVol, kind: HandlerKind, order: u64| {
             vols.push((
                 m.vol.added[v as usize],
@@ -436,7 +437,7 @@ impl Battle {
     }
 
     pub(crate) fn run_residual(&mut self) {
-        let mut handlers: Vec<Handler> = Vec::new();
+        let mut handlers: Small<Handler, 16> = Small::new();
         self.turn_state.sorting = true;
         let order = |b: &Battle, id: &str, field: &str, default: u32| -> u64 {
             b.dex

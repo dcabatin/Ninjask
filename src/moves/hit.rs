@@ -2,6 +2,7 @@
 //! Substitute, and the effects a move applies to each target.
 
 use crate::battle::Grounded;
+use crate::battle::Small;
 use crate::battle::{ActiveList, Battle, MonRef, PerActive};
 use crate::dex::events::Event;
 use crate::dex::types::*;
@@ -300,7 +301,7 @@ impl Battle {
     /// Whether the move can no longer miss.
     pub(super) fn accuracy_event(&mut self, r: MonRef, t: MonRef, mv: &Move) -> bool {
         use crate::abilities::{compare_mod, ModHandler};
-        let mut hs: Vec<(Option<MonRef>, ModHandler)> = Vec::new();
+        let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
         // The target's volatiles in the order they were added (Minimize's
         // can't miss a `minimize` move).
         let minimized = self.mon(t).vol.minimize;

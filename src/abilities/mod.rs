@@ -7,6 +7,7 @@ mod copy;
 mod forms;
 mod illusion;
 
+use crate::battle::Small;
 use crate::battle::{ActiveList, Battle, MonRef};
 use crate::dex::events::{Event, Role};
 use crate::dex::types::*;
@@ -131,7 +132,7 @@ impl Battle {
     /// Trace's Update: copy a random adjacent foe's ability, unless none can
     /// be traced (`notrace`, No Ability); then keep seeking.
     pub(crate) fn trace_update(&mut self, r: MonRef) {
-        let candidates: Vec<MonRef> = self
+        let candidates: Small<MonRef> = self
             .foes_of(r)
             .into_iter()
             .filter(|&f| {
@@ -468,7 +469,7 @@ impl Battle {
             .map(|g| self.has_type_of(t, g))
             .unwrap_or(false);
         if grass && by_other {
-            let mut holders = vec![t];
+            let mut holders: Small<MonRef> = smallvec::smallvec![t];
             holders.extend(self.allies_of(t));
             if let Some(&holder) = holders
                 .iter()
@@ -675,9 +676,9 @@ impl Battle {
     /// `onFoeTryAddVolatile`, every `onAnyTryAddVolatile`, and Misty or
     /// Electric Terrain.
     /// Returns the handlers' holders in the sorted order.
-    pub(crate) fn try_add_volatile_sort(&mut self, t: MonRef) -> Vec<MonRef> {
+    pub(crate) fn try_add_volatile_sort(&mut self, t: MonRef) -> Small<MonRef> {
         let event = Event::TryAddVolatile;
-        let mut hs: Vec<(ModHandler, Option<MonRef>)> = Vec::new();
+        let mut hs: Small<(ModHandler, Option<MonRef>)> = Small::new();
         let handlers = |h: MonRef| &self.dex.ability_handlers[self.mon(h).ability as usize];
         if let Some(p) = handlers(t).priority(event, Role::Own) {
             hs.push((
@@ -726,7 +727,7 @@ impl Battle {
                 .any(|&t| self.dex.type_immune_to_effect(t, "powder"))
                 || self.has_ability(src, AbilityKind::Overcoat)
         };
-        let mut centers: Vec<(MonRef, i32)> = self
+        let mut centers: Small<(MonRef, i32)> = self
             .foes_of(src)
             .into_iter()
             .filter(|&h| {
@@ -740,7 +741,7 @@ impl Battle {
             self.smart_target = false;
             return centers[0].0;
         }
-        let mut holders: Vec<(MonRef, i32)> = self
+        let mut holders: Small<(MonRef, i32)> = self
             .all_active()
             .into_iter()
             .filter(|&h| h != src)
@@ -774,7 +775,7 @@ impl Battle {
         mv: &Move,
         line: usize,
     ) -> bool {
-        let mut hs: Vec<(Option<MonRef>, ModHandler)> = Vec::new();
+        let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
         for s in [src.0, 1 - src.0] {
             for slot in 0..self.sides[s].n_active {
                 let Some(h) = self.active(s, slot).filter(|&h| self.mon(h).hp > 0) else {
@@ -1119,7 +1120,7 @@ impl Battle {
     /// Magnetic Flux's onHitSide: +1 Def and SpD to each Pokémon on the
     /// user's side with Plus or Minus; false (the move fails) without one.
     pub(crate) fn magnetic_flux_on_hit_side(&mut self, r: MonRef, mv: &Move) -> bool {
-        let targets: Vec<MonRef> = (0..self.sides[r.0].n_active)
+        let targets: Small<MonRef> = (0..self.sides[r.0].n_active)
             .filter_map(|sl| self.active(r.0, sl))
             .filter(|&a| self.mon(a).hp > 0 && !self.mon(a).fainted)
             .filter(|&a| matches!(self.ability_id(a), "plus" | "minus"))

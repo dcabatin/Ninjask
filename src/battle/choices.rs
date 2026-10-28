@@ -474,10 +474,7 @@ impl Battle {
         if m.mega_evolved {
             return None;
         }
-        let item = self.dex.item(m.item?);
-        let base_name = &self.dex.species(m.base_species).name;
-        let mega = item.mega_stone.iter().find(|(base, _)| base == base_name)?;
-        self.dex.species_id(&mega.1)
+        self.dex.mega_forme(m.item?, m.base_species)
     }
 
     /// The request a side should answer now, in Showdown's JSON shape.
@@ -629,49 +626,63 @@ impl Battle {
 
     /// Legal options for one active slot of a side, ignoring the other slot.
     pub fn slot_options(&self, s: usize, slot: usize) -> Vec<SlotChoice> {
+        let mut out = Vec::with_capacity(self.slot_options_bound(s, slot));
+        self.slot_options_with(s, slot, &mut |c| out.push(c));
+        out
+    }
+
+    /// An upper bound on `slot_options(s, slot).len()`: every move at every
+    /// target, with and without Mega Evolution, then Struggle and the
+    /// switches (or Pass).
+    fn slot_options_bound(&self, s: usize, slot: usize) -> usize {
+        let side = &self.sides[s];
+        let moves = self.active(s, slot).map_or(0, |r| self.mon(r).moves.len());
+        moves * 2 * (2 * side.n_active) + side.mons.len() + 1
+    }
+
+    /// `slot_options`, handing each option to `push` in order.
+    fn slot_options_with(&self, s: usize, slot: usize, push: &mut impl FnMut(SlotChoice)) {
         let side = &self.sides[s];
         let bench = || (side.n_active..side.mons.len()).filter(|&i| !side.mons[i].fainted);
         if self.request == RequestState::Switch {
             if !self.force_switch_flag(s, slot) {
-                return vec![SlotChoice::Pass];
+                return push(SlotChoice::Pass);
             }
             if side.revival[slot] {
                 // Revival Blessing: a fainted teammate, wherever it is.
-                let fainted: Vec<SlotChoice> = (0..side.mons.len())
-                    .filter(|&i| side.mons[i].fainted)
-                    .map(|i| SlotChoice::Switch { index: i })
-                    .collect();
-                return if fainted.is_empty() {
-                    vec![SlotChoice::Pass]
-                } else {
-                    fainted
-                };
+                let mut any = false;
+                for i in (0..side.mons.len()).filter(|&i| side.mons[i].fainted) {
+                    any = true;
+                    push(SlotChoice::Switch { index: i });
+                }
+                if !any {
+                    push(SlotChoice::Pass);
+                }
+                return;
             }
-            let mut out: Vec<SlotChoice> =
-                bench().map(|i| SlotChoice::Switch { index: i }).collect();
-            out.push(SlotChoice::Pass);
-            return out;
+            for i in bench() {
+                push(SlotChoice::Switch { index: i });
+            }
+            return push(SlotChoice::Pass);
         }
         let Some(r) = self.active(s, slot) else {
-            return vec![SlotChoice::Pass];
+            return push(SlotChoice::Pass);
         };
         let m = self.mon(r);
         if m.fainted {
-            return vec![SlotChoice::Pass];
+            return push(SlotChoice::Pass);
         }
         // A locked Pokémon (recharging, or striking with a charged move) has
         // one choice, "move 1": no target, no Mega Evolution, no switch.
         if self.locked_move(r).is_some() {
-            return vec![SlotChoice::Move {
+            return push(SlotChoice::Move {
                 slot: 0,
                 target: 0,
                 mega: false,
-            }];
+            });
         }
-        // At most every move at every target, with and without Mega
-        // Evolution, then Struggle or the switches.
-        let most = m.moves.len() * 2 * (2 * MAX_ACTIVE_PER_SIDE) + side.mons.len();
-        let mut out = Vec::with_capacity(most);
+        // Every move at every target, with and without Mega Evolution, then
+        // Struggle or the switches.
         let can_mega = !side.mega_used && self.can_mega_evo(r).is_some();
         // Moves the Pokémon can use. Imprison's hidden disables leave others
         // in the last active Pokémon's request, but Showdown refuses them.
@@ -694,13 +705,13 @@ impl Battle {
                 targets.push(0);
             }
             for &t in &targets {
-                out.push(SlotChoice::Move {
+                push(SlotChoice::Move {
                     slot: i,
                     target: t,
                     mega: false,
                 });
                 if can_mega {
-                    out.push(SlotChoice::Move {
+                    push(SlotChoice::Move {
                         slot: i,
                         target: t,
                         mega: true,
@@ -712,16 +723,17 @@ impl Battle {
         // request hid the trap).
         if !any_usable {
             // No usable move: Struggle, which ignores "mega".
-            out.push(SlotChoice::Move {
+            push(SlotChoice::Move {
                 slot: STRUGGLE,
                 target: 0,
                 mega: false,
             });
         }
         if m.trapped == crate::state::Trapped::No {
-            out.extend(bench().map(|i| SlotChoice::Switch { index: i }));
+            for i in bench() {
+                push(SlotChoice::Switch { index: i });
+            }
         }
-        out
     }
 
     /// All legal joint choices for a side's current request.
@@ -775,8 +787,27 @@ impl Battle {
     /// than enumerating `joint_choices`; not uniform over joint choices.
     pub fn sample_joint_choice(&self, s: usize, rng: &mut crate::rng::Rng) -> Vec<SlotChoice> {
         let n = self.sides[s].n_active;
-        let per_slot: ArrayVec<Vec<SlotChoice>, MAX_ACTIVE_PER_SIDE> =
-            (0..n).map(|slot| self.slot_options(s, slot)).collect();
+        // Each slot's options, on the stack when they fit (always, for
+        // teams of at most six with four moves each), filled in place.
+        let mut inline: [ArrayVec<SlotChoice, SLOT_OPTIONS_INLINE>; MAX_ACTIVE_PER_SIDE] =
+            Default::default();
+        let mut heap: [Vec<SlotChoice>; MAX_ACTIVE_PER_SIDE] = Default::default();
+        for slot in 0..n {
+            if self.slot_options_bound(s, slot) <= SLOT_OPTIONS_INLINE {
+                let o = &mut inline[slot];
+                self.slot_options_with(s, slot, &mut |c| o.push(c));
+            } else {
+                let o = &mut heap[slot];
+                self.slot_options_with(s, slot, &mut |c| o.push(c));
+            }
+        }
+        let options = |slot: usize| -> &[SlotChoice] {
+            if heap[slot].is_empty() {
+                &inline[slot]
+            } else {
+                &heap[slot]
+            }
+        };
         let bench = (n..self.sides[s].mons.len())
             .filter(|&i| !self.sides[s].mons[i].fainted)
             .count();
@@ -789,9 +820,11 @@ impl Battle {
             0
         };
         loop {
-            let pick: Vec<SlotChoice> = per_slot
-                .iter()
-                .map(|o| o[rng.random(o.len() as u32) as usize])
+            let pick: ArrayVec<SlotChoice, MAX_ACTIVE_PER_SIDE> = (0..n)
+                .map(|slot| {
+                    let o = options(slot);
+                    o[rng.random(o.len() as u32) as usize]
+                })
                 .collect();
             let mut switches: ArrayVec<usize, MAX_ACTIVE_PER_SIDE> = ArrayVec::new();
             let mut megas = 0;
@@ -807,7 +840,7 @@ impl Battle {
                 .enumerate()
                 .all(|(i, x)| !switches[..i].contains(x));
             if distinct && megas <= 1 && switches.len() >= want_switches {
-                return pick;
+                return pick.to_vec();
             }
         }
     }
@@ -850,3 +883,8 @@ impl Battle {
         self.choice_string(c)
     }
 }
+
+/// How many options of one slot `sample_joint_choice` keeps on the stack:
+/// four moves at four targets with and without Mega Evolution, then six
+/// Pokémon and Struggle, fit.
+const SLOT_OPTIONS_INLINE: usize = 48;

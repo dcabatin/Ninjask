@@ -4,6 +4,7 @@
 use super::damage;
 use super::hit::TryHit;
 use crate::battle::log::LogEntry;
+use crate::battle::Small;
 use crate::battle::{ActiveList, Battle, MonRef};
 use crate::dex::events::Event;
 use crate::dex::types::*;
@@ -209,7 +210,7 @@ impl Battle {
         // highest priority first: Throat Chop and Heal Block (6), then the
         // foes' Imprisons (4) at equal speed.
         use crate::abilities::{compare_mod, ModHandler};
-        let mut six: Vec<bool> = Vec::new(); // true: Heal Block
+        let mut six: Small<bool> = Small::new(); // true: Heal Block
         if self.mon(r).vol.throat_chop > 0 {
             six.push(false);
         }
@@ -218,14 +219,14 @@ impl Battle {
         }
         if six.len() > 1 {
             let speed = self.mon(r).speed;
-            let mut hs: Vec<(bool, ModHandler)> = six
+            let mut hs: Small<(bool, ModHandler)> = six
                 .iter()
                 .map(|&k| (k, ModHandler::new(6, speed, 2)))
                 .collect();
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
             six = hs.into_iter().map(|(k, _)| k).collect();
         }
-        let mut imprisoners: Vec<(MonRef, ModHandler)> = self
+        let mut imprisoners: Small<(MonRef, ModHandler)> = self
             .foes_of(r)
             .into_iter()
             .filter(|&f| self.mon(f).vol.imprison)
@@ -620,7 +621,7 @@ impl Battle {
         {
             use crate::abilities::{compare_mod, ModHandler};
             let speed = self.mon(r).speed;
-            let mut hs: Vec<ModHandler> = Vec::new();
+            let mut hs: Small<ModHandler> = Small::new();
             if v.throat_chop > 0 {
                 hs.push(ModHandler::new(0, speed, 2));
             }
@@ -966,7 +967,7 @@ impl Battle {
             if !bounced && mv.target == Target::FoeSide && mv.has(MoveFlag::Reflectable) {
                 use crate::abilities::{compare_mod, ModHandler};
                 let side = 1 - r.0;
-                let mut holders: Vec<(MonRef, ModHandler)> = (0..self.sides[side].n_active)
+                let mut holders: Small<(MonRef, ModHandler)> = (0..self.sides[side].n_active)
                     .filter_map(|sl| self.active(side, sl))
                     .filter(|&h| self.mon(h).hp > 0 && !self.mon(h).fainted)
                     .filter(|&h| self.raw_ability_kind(h) == crate::kinds::AbilityKind::MagicBounce)
@@ -1368,7 +1369,7 @@ impl Battle {
             .count();
         if n > 1 {
             let speed = self.mon(r).speed;
-            let mut hs = vec![ModHandler::new(0, speed, 2); n];
+            let mut hs: Small<ModHandler> = smallvec::smallvec![ModHandler::new(0, speed, 2); n];
             self.speed_sort_by(&mut hs, compare_mod);
         }
         self.mon_mut(r).vol.destiny_bond = false;

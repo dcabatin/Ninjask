@@ -1,5 +1,6 @@
 //! Abilities that take things from others: Mummy, Pickpocket and Magician.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::dex::Move;
@@ -80,7 +81,7 @@ impl Battle {
         if (m.switch_flag && m.switch_from_move.is_none()) || m.item.is_some() || m.vol.gem {
             return false;
         }
-        let mut targets: Vec<(MonRef, ModHandler)> = hit
+        let mut targets: Small<(MonRef, ModHandler)> = hit
             .iter()
             .map(|&t| (t, ModHandler::new(0, self.mon(t).speed, 0)))
             .collect();

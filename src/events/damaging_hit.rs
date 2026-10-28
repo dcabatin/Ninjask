@@ -1,6 +1,7 @@
 //! `DamagingHit` (with the user's `SourceDamagingHit`): the handlers of the
 //! targets a move damaged, and the user's Poison Touch.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::dex::Move;
@@ -51,7 +52,7 @@ impl Battle {
         move_type: TypeId,
     ) {
         let fire = self.dex.ids.types.fire == Some(move_type);
-        let mut handlers: Vec<(u64, usize, HitHandler)> = Vec::new();
+        let mut handlers: Small<(u64, usize, HitHandler)> = Small::new();
         for (i, &t) in damaged.iter().enumerate() {
             if fire && mv.category != Category::Status && self.mon(t).status == Status::Frz {
                 handlers.push((u64::MAX, i, HitHandler::Thaw(t)));
