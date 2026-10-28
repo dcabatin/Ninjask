@@ -4,7 +4,8 @@ In a source checkout (an editable install, `pip install -e .`), everything is
 inside the checkout: Showdown in `third_party/pokemon-showdown`
 (`scripts/setup_showdown.sh` puts it there) and generated data (format
 exports, team pools) in `data/derived/`. When the checkout is a subdirectory
-of another repository's (the engine vendored into a larger project), that
+of another repository's (the engine vendored into a larger project, as a copy or a git
+submodule), that
 repository's `third_party/` and `data/derived/` are used instead, so the
 project and the engine share one Showdown and one copy of the data.
 `refsim/showdown_path.js` and `scripts/setup_showdown.sh` follow the same
@@ -43,7 +44,9 @@ def _home() -> Path:
         return Path(env)
     if not IN_CHECKOUT:
         return Path.cwd()
-    if not (ENGINE_ROOT / ".git").exists() and (ENGINE_ROOT.parent / ".git").exists():
+    # A repository of its own has a .git directory; vendored as a subdirectory
+    # or a git submodule (whose .git is a file), it uses the enclosing one.
+    if not (ENGINE_ROOT / ".git").is_dir() and (ENGINE_ROOT.parent / ".git").exists():
         return ENGINE_ROOT.parent
     return ENGINE_ROOT
 

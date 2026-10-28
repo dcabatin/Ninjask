@@ -5,15 +5,16 @@
 #
 # It goes to $NINJASK_SHOWDOWN if set, else to third_party/pokemon-showdown
 # under $NINJASK_HOME, else under this checkout, or under the enclosing
-# repository's checkout when this one is a subdirectory of it (the engine
-# vendored into a project). python/ninjask/paths.py follows the same rule.
+# repository's checkout when this one is a subdirectory or a git submodule of
+# it (the engine vendored into a project). python/ninjask/paths.py follows the
+# same rule.
 set -euo pipefail
 
 ENGINE="$(cd "$(dirname "$0")/.." && pwd)"
 COMMIT="$(tr -d '[:space:]' < "$ENGINE/refsim/SHOWDOWN_COMMIT")"
 if [ -n "${NINJASK_HOME:-}" ]; then
 	HOME_DIR="$NINJASK_HOME"
-elif [ ! -e "$ENGINE/.git" ] && [ -e "$ENGINE/../.git" ]; then
+elif [ ! -d "$ENGINE/.git" ] && [ -e "$ENGINE/../.git" ]; then
 	HOME_DIR="$(cd "$ENGINE/.." && pwd)"
 else
 	HOME_DIR="$ENGINE"
