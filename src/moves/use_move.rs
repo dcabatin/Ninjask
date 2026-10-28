@@ -4,6 +4,7 @@
 use super::damage;
 use super::hit::TryHit;
 use crate::battle::log::LogEntry;
+use crate::battle::Small;
 use crate::battle::{ActiveList, Battle, MonRef};
 use crate::dex::events::Event;
 use crate::dex::types::*;
@@ -39,15 +40,9 @@ impl Battle {
     }
 
     /// Imprison (onFoeDisableMove): a move an imprisoning foe knows.
-    fn move_imprisoned(&self, r: MonRef, idx: usize) -> bool {
+    pub(crate) fn move_imprisoned(&self, r: MonRef, idx: usize) -> bool {
         // Rarely anyone imprisons: look at the foes' slots before the foes.
-        let foe_side = &self.sides[1 - r.0];
-        if !foe_side
-            .mons
-            .iter()
-            .take(foe_side.n_active)
-            .any(|m| m.vol.imprison)
-        {
+        if !self.foe_side_imprisons(r.0) {
             return false;
         }
         let id = self.mon(r).moves[idx].id;
@@ -56,8 +51,21 @@ impl Battle {
             .any(|f| self.mon(f).vol.imprison && self.mon(f).moves.iter().any(|x| x.id == id))
     }
 
+    /// Whether a Pokémon in the active slots of the side facing side `s`
+    /// has Imprison up.
+    #[inline]
+    pub(crate) fn foe_side_imprisons(&self, s: usize) -> bool {
+        let foe_side = &self.sides[1 - s];
+        let n = foe_side.n_active.min(foe_side.mons.len());
+        let mut any = false;
+        for m in &foe_side.mons[..n] {
+            any |= m.vol.imprison;
+        }
+        any
+    }
+
     /// Every reason a move slot can't be used but Imprison.
-    fn move_disabled_openly(&self, r: MonRef, idx: usize) -> bool {
+    pub(crate) fn move_disabled_openly(&self, r: MonRef, idx: usize) -> bool {
         self.mon(r).moves[idx].pp == 0 || self.move_disabled_by_effect(r, idx)
     }
 
@@ -78,7 +86,30 @@ impl Battle {
 
     /// The `DisableMove` handlers but Imprison's: the Choice lock, Throat
     /// Chop, Taunt, Heal Block, Encore, Disable and (Champions) Fake Out's own.
+    #[inline(always)]
     fn move_disabled_by_effect(&self, r: MonRef, idx: usize) -> bool {
+        let m = self.mon(r);
+        let ms = &m.moves[idx];
+        let v = &m.vol;
+        // Usually no volatile disables anything and Gravity is off: only
+        // the move's own conditions remain.
+        if v.choice_lock.is_none()
+            && v.throat_chop == 0
+            && v.taunt == 0
+            && v.heal_block == 0
+            && v.encore.is_none()
+            && v.disable.is_none()
+            && !v.torment
+            && self.field.gravity == 0
+        {
+            return self.move_disabled_by_itself(m, ms);
+        }
+        self.move_disabled_by_volatile(r, idx)
+    }
+
+    /// `move_disabled_by_effect` when a disabling volatile or Gravity is up.
+    #[inline(never)]
+    fn move_disabled_by_volatile(&self, r: MonRef, idx: usize) -> bool {
         let m = self.mon(r);
         let ms = &m.moves[idx];
         if let Some(lock) = m.vol.choice_lock {
@@ -105,14 +136,20 @@ impl Battle {
         if m.vol.disable == Some(ms.id) || self.torment_on_disable_move(r, ms.id) {
             return true;
         }
-        // `cantusetwice` (Gigaton Hammer, Blood Moon): not right after itself.
-        if mv.has(MoveFlag::CantUseTwice) && m.last_move == Some(ms.id) {
-            return true;
-        }
-        matches!(
-            self.dex.move_kind[ms.id as usize],
-            MoveKind::FakeOut | MoveKind::FirstImpression
-        ) && m.active_move_actions > 0
+        self.move_disabled_by_itself(m, ms)
+    }
+
+    /// The move's own `DisableMove` conditions: `cantusetwice` (Gigaton
+    /// Hammer, Blood Moon) right after itself, and Fake Out or First
+    /// Impression after the Pokémon's first action.
+    #[inline(always)]
+    fn move_disabled_by_itself(&self, m: &Mon, ms: &MoveSlot) -> bool {
+        (m.last_move == Some(ms.id) && self.dex.mv(ms.id).has(MoveFlag::CantUseTwice))
+            || (m.active_move_actions > 0
+                && matches!(
+                    self.dex.move_kind[ms.id as usize],
+                    MoveKind::FakeOut | MoveKind::FirstImpression
+                ))
     }
 
     /// Showdown `runMove`: before-move checks, PP, then `useMove`. `slot` is
@@ -209,7 +246,7 @@ impl Battle {
         // highest priority first: Throat Chop and Heal Block (6), then the
         // foes' Imprisons (4) at equal speed.
         use crate::abilities::{compare_mod, ModHandler};
-        let mut six: Vec<bool> = Vec::new(); // true: Heal Block
+        let mut six: Small<bool> = Small::new(); // true: Heal Block
         if self.mon(r).vol.throat_chop > 0 {
             six.push(false);
         }
@@ -218,14 +255,14 @@ impl Battle {
         }
         if six.len() > 1 {
             let speed = self.mon(r).speed;
-            let mut hs: Vec<(bool, ModHandler)> = six
+            let mut hs: Small<(bool, ModHandler)> = six
                 .iter()
                 .map(|&k| (k, ModHandler::new(6, speed, 2)))
                 .collect();
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
             six = hs.into_iter().map(|(k, _)| k).collect();
         }
-        let mut imprisoners: Vec<(MonRef, ModHandler)> = self
+        let mut imprisoners: Small<(MonRef, ModHandler)> = self
             .foes_of(r)
             .into_iter()
             .filter(|&f| self.mon(f).vol.imprison)
@@ -620,7 +657,7 @@ impl Battle {
         {
             use crate::abilities::{compare_mod, ModHandler};
             let speed = self.mon(r).speed;
-            let mut hs: Vec<ModHandler> = Vec::new();
+            let mut hs: Small<ModHandler> = Small::new();
             if v.throat_chop > 0 {
                 hs.push(ModHandler::new(0, speed, 2));
             }
@@ -966,7 +1003,7 @@ impl Battle {
             if !bounced && mv.target == Target::FoeSide && mv.has(MoveFlag::Reflectable) {
                 use crate::abilities::{compare_mod, ModHandler};
                 let side = 1 - r.0;
-                let mut holders: Vec<(MonRef, ModHandler)> = (0..self.sides[side].n_active)
+                let mut holders: Small<(MonRef, ModHandler)> = (0..self.sides[side].n_active)
                     .filter_map(|sl| self.active(side, sl))
                     .filter(|&h| self.mon(h).hp > 0 && !self.mon(h).fainted)
                     .filter(|&h| self.raw_ability_kind(h) == crate::kinds::AbilityKind::MagicBounce)
@@ -1368,7 +1405,7 @@ impl Battle {
             .count();
         if n > 1 {
             let speed = self.mon(r).speed;
-            let mut hs = vec![ModHandler::new(0, speed, 2); n];
+            let mut hs: Small<ModHandler> = smallvec::smallvec![ModHandler::new(0, speed, 2); n];
             self.speed_sort_by(&mut hs, compare_mod);
         }
         self.mon_mut(r).vol.destiny_bond = false;

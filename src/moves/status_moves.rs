@@ -1,6 +1,7 @@
 //! The effects of status moves, Showdown's `runMoveEffects` for them.
 
 use super::hit::{Did, TryHit};
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::events::Event;
 use crate::dex::types::*;
@@ -32,15 +33,15 @@ impl Battle {
         targets: &[MonRef],
         mv: &Move,
         kind: MoveKind,
-    ) -> Vec<MonRef> {
+    ) -> Small<MonRef> {
         self.active_move.not_fail.clear();
         // Whether the move did something to any target (`runMoveEffects`).
         let mut any = false;
         let mut plain_fail = false;
-        let mut hit = Vec::new();
-        let mut blocked = Vec::new();
+        let mut hit = Small::new();
+        let mut blocked: Small<MonRef> = Small::new();
         // spreadMoveHit's checks run for every target before any effect.
-        let mut reached = Vec::new();
+        let mut reached: Small<MonRef> = Small::new();
         for &t in targets {
             // The move's own TryHit comes first: Yawn fails on a Pokémon
             // with a status.

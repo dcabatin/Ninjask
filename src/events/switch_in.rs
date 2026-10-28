@@ -1,6 +1,7 @@
 //! `SwitchIn`, `Start`, `End` and `SwitchOut` events of abilities, and the
 //! switch-in priority of their handlers.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::kinds::{AbilityKind, AbsorbEffect, EffectRef};
@@ -43,7 +44,8 @@ impl Battle {
             return;
         }
         let ability = self.mon(r).ability;
-        let name = self.dex.ability(ability).name.clone();
+        let dex = self.dex.clone();
+        let name = dex.ability(ability).name.as_str();
         let ident = self.ident(r);
         match self.dex.ability_kind[ability as usize] {
             AbilityKind::Intimidate => {
@@ -64,10 +66,10 @@ impl Battle {
                 }
             }
             AbilityKind::SetWeather(w) => {
-                self.set_weather(w, r, Some(&name));
+                self.set_weather(w, r, Some(name));
             }
             AbilityKind::SetTerrain(t) => {
-                self.set_terrain(t, r, Some(&name));
+                self.set_terrain(t, r, Some(name));
             }
             AbilityKind::Aura(_) => {
                 // Fairy Aura and Dark Aura's onStart return early while a
@@ -302,7 +304,7 @@ impl Battle {
     /// Metal Burst, Mirror Coat 120; other damaging moves without one 80);
     /// one is drawn and announced.
     pub(crate) fn forewarn(&mut self, r: MonRef) {
-        let mut warn: Vec<(MoveId, MonRef)> = Vec::new();
+        let mut warn: Small<(MoveId, MonRef)> = Small::new();
         let mut warn_bp = 1;
         for f in self.foes_of(r) {
             for slot in &self.mon(f).moves {
@@ -318,7 +320,7 @@ impl Battle {
                     bp = 80;
                 }
                 if bp > warn_bp {
-                    warn = vec![(slot.id, f)];
+                    warn = smallvec::smallvec![(slot.id, f)];
                     warn_bp = bp;
                 } else if bp == warn_bp {
                     warn.push((slot.id, f));

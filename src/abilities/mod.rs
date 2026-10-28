@@ -7,6 +7,7 @@ mod copy;
 mod forms;
 mod illusion;
 
+use crate::battle::Small;
 use crate::battle::{ActiveList, Battle, MonRef};
 use crate::dex::events::{Event, Role};
 use crate::dex::types::*;
@@ -131,7 +132,7 @@ impl Battle {
     /// Trace's Update: copy a random adjacent foe's ability, unless none can
     /// be traced (`notrace`, No Ability); then keep seeking.
     pub(crate) fn trace_update(&mut self, r: MonRef) {
-        let candidates: Vec<MonRef> = self
+        let candidates: Small<MonRef> = self
             .foes_of(r)
             .into_iter()
             .filter(|&f| {
@@ -389,7 +390,8 @@ impl Battle {
         let ident = self.ident(t);
         let by_other = source != Some(t);
         let quiet = self.effect_has_secondaries(effect);
-        let name = self.ability_name(t);
+        let dex = self.dex.clone();
+        let name = dex.ability(self.mon(t).ability).name.as_str();
         match self.ability_kind(t) {
             AbilityKind::ClearBody if by_other => {
                 let mut blocked = false;
@@ -468,7 +470,7 @@ impl Battle {
             .map(|g| self.has_type_of(t, g))
             .unwrap_or(false);
         if grass && by_other {
-            let mut holders = vec![t];
+            let mut holders: Small<MonRef> = smallvec::smallvec![t];
             holders.extend(self.allies_of(t));
             if let Some(&holder) = holders
                 .iter()
@@ -537,10 +539,18 @@ impl Battle {
         if m.fainted || !m.is_active {
             return mv.priority;
         }
-        match self.ability_kind(r) {
-            AbilityKind::Prankster if mv.category == Category::Status => mv.priority + 1,
+        // The raw ability first: most have no priority handler, and then
+        // whether it is suppressed does not matter.
+        match self.raw_ability_kind(r) {
+            AbilityKind::Prankster
+                if mv.category == Category::Status && !self.ability_ignored(r) =>
+            {
+                mv.priority + 1
+            }
             AbilityKind::GaleWings
-                if self.dex.type_names[mv.type_ as usize] == "Flying" && m.hp == m.maxhp =>
+                if self.dex.type_names[mv.type_ as usize] == "Flying"
+                    && m.hp == m.maxhp
+                    && !self.ability_ignored(r) =>
             {
                 mv.priority + 1
             }
@@ -606,6 +616,12 @@ impl Battle {
         if self.probe {
             return;
         }
+        // Without two handlers there is no sort, so no draw: count, as an
+        // upper bound, the effects below with a handler for the event in
+        // any role.
+        if extra.len() + self.event_handler_bound(event, target, source) < 2 {
+            return;
+        }
         let mut hs: ArrayVec<ModHandler, MAX_SORTED_HANDLERS> = ArrayVec::new();
         hs.extend(extra.iter().copied());
         self.push_event_handlers(&mut hs, event, Role::Own, target);
@@ -626,8 +642,35 @@ impl Battle {
         }
     }
 
+    /// An upper bound on the ability and item handlers `event_sort`
+    /// collects: those of the target, the source and every active Pokémon
+    /// with a handler for `event` in any role.
+    #[inline]
+    fn event_handler_bound(&self, event: Event, target: MonRef, source: Option<MonRef>) -> usize {
+        let count = |m: &crate::state::Mon| -> usize {
+            let a = self.dex.ability_handlers[m.ability as usize].has_event(event) as usize;
+            let i = m
+                .item
+                .is_some_and(|i| self.dex.item_handlers[i as usize].has_event(event))
+                as usize;
+            a + i
+        };
+        let mut n = count(self.mon(target));
+        if let Some(src) = source {
+            n += count(self.mon(src));
+        }
+        for side in &self.sides {
+            let k = side.n_active.min(side.mons.len());
+            for m in &side.mons[..k] {
+                n += count(m);
+            }
+        }
+        n
+    }
+
     /// Adds `h`'s ability and item handlers for `event` in `role` to an
     /// event's sort (abilities sort ahead of items at equal priority and speed).
+    #[inline(always)]
     fn push_event_handlers<const N: usize>(
         &self,
         hs: &mut ArrayVec<ModHandler, N>,
@@ -648,6 +691,7 @@ impl Battle {
 
     /// `push_event_handlers` for a Pokémon on the field: its `role` (ally
     /// or foe) handlers, then its `onAny` ones, ability before item in each.
+    #[inline(always)]
     fn push_side_event_handlers<const N: usize>(
         &self,
         hs: &mut ArrayVec<ModHandler, N>,
@@ -675,9 +719,9 @@ impl Battle {
     /// `onFoeTryAddVolatile`, every `onAnyTryAddVolatile`, and Misty or
     /// Electric Terrain.
     /// Returns the handlers' holders in the sorted order.
-    pub(crate) fn try_add_volatile_sort(&mut self, t: MonRef) -> Vec<MonRef> {
+    pub(crate) fn try_add_volatile_sort(&mut self, t: MonRef) -> Small<MonRef> {
         let event = Event::TryAddVolatile;
-        let mut hs: Vec<(ModHandler, Option<MonRef>)> = Vec::new();
+        let mut hs: Small<(ModHandler, Option<MonRef>)> = Small::new();
         let handlers = |h: MonRef| &self.dex.ability_handlers[self.mon(h).ability as usize];
         if let Some(p) = handlers(t).priority(event, Role::Own) {
             hs.push((
@@ -726,7 +770,7 @@ impl Battle {
                 .any(|&t| self.dex.type_immune_to_effect(t, "powder"))
                 || self.has_ability(src, AbilityKind::Overcoat)
         };
-        let mut centers: Vec<(MonRef, i32)> = self
+        let mut centers: Small<(MonRef, i32)> = self
             .foes_of(src)
             .into_iter()
             .filter(|&h| {
@@ -740,7 +784,7 @@ impl Battle {
             self.smart_target = false;
             return centers[0].0;
         }
-        let mut holders: Vec<(MonRef, i32)> = self
+        let mut holders: Small<(MonRef, i32)> = self
             .all_active()
             .into_iter()
             .filter(|&h| h != src)
@@ -774,7 +818,7 @@ impl Battle {
         mv: &Move,
         line: usize,
     ) -> bool {
-        let mut hs: Vec<(Option<MonRef>, ModHandler)> = Vec::new();
+        let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
         for s in [src.0, 1 - src.0] {
             for slot in 0..self.sides[s].n_active {
                 let Some(h) = self.active(s, slot).filter(|&h| self.mon(h).hp > 0) else {
@@ -802,7 +846,7 @@ impl Battle {
         let unblockable = matches!(mv.target, Target::FoeSide)
             || (mv.target == Target::All
                 && !matches!(mv.id.as_str(), "perishsong" | "flowershield" | "rototiller"));
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             let Some(h) = h else {
                 self.metronome_on_try_move(src, mv);
                 continue;
@@ -1119,7 +1163,7 @@ impl Battle {
     /// Magnetic Flux's onHitSide: +1 Def and SpD to each Pokémon on the
     /// user's side with Plus or Minus; false (the move fails) without one.
     pub(crate) fn magnetic_flux_on_hit_side(&mut self, r: MonRef, mv: &Move) -> bool {
-        let targets: Vec<MonRef> = (0..self.sides[r.0].n_active)
+        let targets: Small<MonRef> = (0..self.sides[r.0].n_active)
             .filter_map(|sl| self.active(r.0, sl))
             .filter(|&a| self.mon(a).hp > 0 && !self.mon(a).fainted)
             .filter(|&a| matches!(self.ability_id(a), "plus" | "minus"))

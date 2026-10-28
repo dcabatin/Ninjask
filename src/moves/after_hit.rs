@@ -1,6 +1,7 @@
 //! After a hit: secondary effects, self drops, recoil, self-switching and
 //! `AfterMoveSecondary`.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::events::Event;
 use crate::dex::types::*;
@@ -112,7 +113,7 @@ impl Battle {
     /// except Eject Button, which comes right after the status: its priority
     /// (2) is the only nonzero one, so it never ties with the others.
     pub(super) fn run_after_move_secondary(&mut self, src: MonRef, targets: &[MonRef], mv: &Move) {
-        let mut handlers: Vec<(MonRef, SecondaryHandler, i32, i32, i32)> = Vec::new();
+        let mut handlers: Small<(MonRef, SecondaryHandler, i32, i32, i32)> = Small::new();
         for &t in targets {
             let speed = self.mon(t).speed;
             if self.mon(t).status == Status::Frz {
@@ -132,7 +133,7 @@ impl Battle {
             }
         }
         self.speed_sort_by(&mut handlers, compare_secondary_handlers);
-        for (t, h, ..) in handlers {
+        for &(t, h, ..) in handlers.iter() {
             match h {
                 // The freeze status thaws on a thawsTarget move.
                 SecondaryHandler::Thaw => {
@@ -157,7 +158,7 @@ impl Battle {
         mv: &Move,
     ) {
         self.begin_damaging_move(mv, false);
-        let mut hs = Vec::new();
+        let mut hs: Small<_> = Small::new();
         for &t in targets
             .iter()
             .filter(|&&t| !self.hits_substitute(src, t, mv))
@@ -167,7 +168,7 @@ impl Battle {
             }
         }
         self.speed_sort_by(&mut hs, compare_secondary_handlers);
-        for (t, ..) in hs {
+        for &(t, ..) in hs.iter() {
             self.berserk_on_after_move_secondary(src, t);
         }
     }
@@ -551,7 +552,7 @@ impl Battle {
 
     /// The targets a status move hit that reach `afterMoveSecondaryEvent`:
     /// not those whose effect returned `NOT_FAIL`.
-    pub(crate) fn after_move_secondary_targets(&mut self, hit: &[MonRef]) -> Vec<MonRef> {
+    pub(crate) fn after_move_secondary_targets(&mut self, hit: &[MonRef]) -> Small<MonRef> {
         let not_fail = std::mem::take(&mut self.active_move.not_fail);
         hit.iter()
             .copied()
@@ -655,7 +656,7 @@ impl Battle {
         }
         let v = self.mon(r).vol;
         let speed = self.mon(r).speed;
-        let mut vols: Vec<(u32, H)> = Vec::new();
+        let mut vols: Small<(u32, H)> = Small::new();
         if v.locked_move.is_some() {
             vols.push((v.added[ResidualVol::LockedMove as usize], H::LockedMove));
         }
@@ -663,7 +664,7 @@ impl Battle {
             vols.push((v.added[ResidualVol::Charge as usize], H::Charge));
         }
         vols.sort_by_key(|&(n, _)| n);
-        let mut hs: Vec<(H, ModHandler)> = vols
+        let mut hs: Small<(H, ModHandler)> = vols
             .into_iter()
             .map(|(_, h)| (h, ModHandler::new(0, speed, 2)))
             .collect();
@@ -681,7 +682,7 @@ impl Battle {
             return;
         }
         self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             match h {
                 H::WhiteHerb(h) => self.white_herb_check(h),
                 H::Opportunist(h) => self.opportunist_release(h),
@@ -747,7 +748,7 @@ impl Battle {
         }
         if self.mon(healer).vol.heal_block > 0 {
             use crate::abilities::{compare_mod, ModHandler};
-            let mut hs = vec![
+            let mut hs = [
                 (true, ModHandler::new(0, self.mon(healer).speed, 2)),
                 (false, ModHandler::new(0, self.mon(source).speed, 7)),
             ];

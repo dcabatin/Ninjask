@@ -3,6 +3,7 @@
 //! `SetStatus`.
 
 use crate::abilities::{compare_mod, ModHandler, SUB_ORDER_ABILITY, SUB_ORDER_ITEM};
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::events::{Event, Role};
 use crate::dex::types::*;
@@ -122,9 +123,9 @@ impl Battle {
     /// `speedSort` orders them, equal ones drawing. The first that stops
     /// the status wins, so two Sweet Veil holders, or Insomnia next to a
     /// faster ally's Sweet Veil, act by Speed.
-    pub(crate) fn set_status_order(&mut self, t: MonRef, src: MonRef) -> Vec<StatusHandler> {
-        let mut hs: Vec<(ModHandler, StatusHandler)> = Vec::new();
-        let push = |hs: &mut Vec<(ModHandler, StatusHandler)>,
+    pub(crate) fn set_status_order(&mut self, t: MonRef, src: MonRef) -> Small<StatusHandler> {
+        let mut hs: Small<(ModHandler, StatusHandler)> = Small::new();
+        let push = |hs: &mut Small<(ModHandler, StatusHandler)>,
                     b: &Battle,
                     h: MonRef,
                     role: Role,

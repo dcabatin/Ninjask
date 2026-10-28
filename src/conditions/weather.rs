@@ -1,5 +1,6 @@
 //! Weather: setting, clearing, the effective weather and the `Weather` event.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::kinds::AbilityKind;
@@ -60,7 +61,7 @@ impl Battle {
     /// type or ability), then the Pokémon's ability (Rain Dish, Solar Power, Ice Body, Dry
     /// Skin).
     pub(crate) fn run_weather(&mut self, w: Weather) {
-        let mut actives: Vec<(MonRef, i32)> = self
+        let mut actives: Small<(MonRef, i32)> = self
             .all_active()
             .into_iter()
             .map(|r| (r, self.mon(r).speed))

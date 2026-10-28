@@ -1,6 +1,7 @@
 //! Switching in and out, dragging, reviving, fainting and the win check.
 
 use super::{Battle, MonRef};
+use crate::battle::Small;
 use crate::dex::types::*;
 use crate::kinds::{AbilityKind, ItemKind};
 use crate::state::*;
@@ -26,7 +27,7 @@ impl Battle {
     /// of the Pokémon that just came in, fastest first.
     pub(crate) fn run_switch(&mut self, switchers: &[MonRef]) {
         // speedOrder: all active Pokémon (fainted too) by speed, ties shuffled.
-        let mut all: Vec<MonRef> = Vec::new();
+        let mut all: Small<MonRef> = Small::new();
         for s in 0..2 {
             for slot in 0..self.sides[s].n_active {
                 if let Some(r) = self.active(s, slot) {
@@ -34,7 +35,7 @@ impl Battle {
                 }
             }
         }
-        let speeds: Vec<(MonRef, i32)> = all.iter().map(|&r| (r, self.mon(r).speed)).collect();
+        let speeds: Small<(MonRef, i32)> = all.iter().map(|&r| (r, self.mon(r).speed)).collect();
         if self.rng.trace.is_some() {
             let list: Vec<String> = speeds
                 .iter()
@@ -59,7 +60,7 @@ impl Battle {
         // broken by the speed order drawn above.
         // The last key is the effect order: a side's hazards tie otherwise,
         // and run in the order they were created.
-        let mut handlers: Vec<(MonRef, SwitchInHandler, i32, i64, u32, u16)> = Vec::new();
+        let mut handlers: Small<(MonRef, SwitchInHandler, i32, i64, u32, u16)> = Small::new();
         self.turn_state.sorting = true;
         for &r in switchers {
             let key = self.mon(r).speed as i64 * 4 - rank(r);
@@ -124,7 +125,7 @@ impl Battle {
             }
             a.5 as i64 - b.5 as i64
         });
-        for (r, kind, _, _, _, _) in handlers {
+        for &(r, kind, _, _, _, _) in handlers.iter() {
             if self.mon(r).fainted || !self.mon(r).is_active {
                 continue;
             }
@@ -364,7 +365,8 @@ impl Battle {
     /// `check_win` false (after a move's hits, while its user still stands)
     /// the win waits until recoil and Life Orb have been applied.
     pub(crate) fn faint_messages_check(&mut self, check_win: bool) {
-        if self.ended {
+        // Nothing queued: no faint, no win to check, no AfterFaint.
+        if self.ended || self.faint_queue.is_empty() {
             return;
         }
         let mut queue = std::mem::take(&mut self.faint_queue);
@@ -432,6 +434,11 @@ impl Battle {
             self.check_win();
         }
         self.run_after_faint(&queue);
+        // Keep the buffer for the next faints.
+        if self.faint_queue.is_empty() {
+            queue.clear();
+            self.faint_queue = queue;
+        }
     }
 
     pub(crate) fn check_win(&mut self) {
@@ -532,14 +539,14 @@ impl Battle {
         // (cleared with the volatiles anyway) mustn't hide the ability from it.
         self.mon_mut(r).vol.gastro_acid = false;
         // Receiver's onAllyFaint joins Destiny Bond's onFaint in the sort.
-        let receivers: Vec<MonRef> = self
+        let receivers: Small<MonRef> = self
             .allies_of(r)
             .into_iter()
             .filter(|&a| self.has_ability(a, AbilityKind::Receiver))
             .collect();
         if !receivers.is_empty() {
             use crate::abilities::{compare_mod, ModHandler};
-            let mut hs: Vec<(ModHandler, Option<MonRef>)> = receivers
+            let mut hs: Small<(ModHandler, Option<MonRef>)> = receivers
                 .iter()
                 .map(|&a| (ModHandler::new(0, self.mon(a).speed, 7), Some(a)))
                 .collect();
@@ -547,7 +554,7 @@ impl Battle {
                 hs.push((ModHandler::new(0, self.mon(r).speed, 2), None));
             }
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.0, &b.0));
-            for (_, holder) in hs {
+            for &(_, holder) in hs.iter() {
                 match holder {
                     Some(h) => self.receiver(h, r),
                     None => self.destiny_bond_faint(r),

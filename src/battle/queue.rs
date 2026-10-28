@@ -2,6 +2,7 @@
 //! ordering, and inserting actions mid-turn.
 
 use super::{ActiveList, Battle, MonRef, PerActive};
+use crate::battle::Small;
 use crate::dex::types::*;
 use crate::state::*;
 
@@ -19,6 +20,9 @@ pub(super) enum Resolution {
     /// `update_speed`: only `getActionSpeed` runs, so the action keeps its
     /// `originalTarget`, and the stored speeds are current.
     Resort,
+    /// `Resort` when no active Pokémon holds Unaware, which re-sorting
+    /// cannot change: its `ModifyBoost` sorts have nothing to sort.
+    ResortWithoutUnaware,
 }
 
 impl Resolution {
@@ -38,7 +42,7 @@ impl Battle {
                 // -index, the Pokémon's speed) and sorts the queue: equal
                 // speeds at the same index are shuffled. The order itself only
                 // rebuilds each side's team, but the draws must match.
-                let mut team_actions: Vec<(i64, i64)> = Vec::new();
+                let mut team_actions: Small<(i64, i64), 12> = Small::new();
                 for s in 0..2 {
                     let order = self.sides[s].team_preview_choice.as_ref().unwrap();
                     for (index, &pos) in order.iter().enumerate() {
@@ -50,8 +54,20 @@ impl Battle {
                 });
                 for s in 0..2 {
                     let order = self.sides[s].team_preview_choice.take().unwrap();
-                    let old = std::mem::take(&mut self.sides[s].mons);
-                    let mut mons: Vec<Mon> = order.iter().map(|&i| old[i].clone()).collect();
+                    // Move the chosen Pokémon out rather than cloning them (a
+                    // repeated index, which the fast path allows, is a copy).
+                    let mut old: Vec<Option<Mon>> = std::mem::take(&mut self.sides[s].mons)
+                        .into_iter()
+                        .map(Some)
+                        .collect();
+                    let mut mons: Vec<Mon> = Vec::with_capacity(order.len());
+                    for &i in &order {
+                        let m = match old[i].take() {
+                            Some(m) => m,
+                            None => mons[order.iter().position(|&j| j == i).unwrap()].clone(),
+                        };
+                        mons.push(m);
+                    }
                     for (p, m) in mons.iter_mut().enumerate() {
                         m.position = p;
                     }
@@ -73,8 +89,13 @@ impl Battle {
             RequestState::Move | RequestState::Switch => {
                 let insta = self.request == RequestState::Switch;
                 self.update_speed();
+                // The queue is empty while the choices resolve (Cud Chew
+                // reads it when Custap Berry is eaten); its buffer is kept.
                 let old_queue = std::mem::take(&mut self.queue);
-                let mut new_actions = Vec::new();
+                // At most four actions per slot: charge, Mega Evolution,
+                // before-turn, move.
+                let mut new_actions: arrayvec::ArrayVec<Action, { 4 * MAX_ACTIVE }> =
+                    arrayvec::ArrayVec::new();
                 for s in 0..2 {
                     if let Some(choice) = self.sides[s].choice.take() {
                         for (slot, c) in choice.into_iter().enumerate() {
@@ -175,8 +196,11 @@ impl Battle {
                 // rest of the turn; turnLoop then inserts beforeTurn and
                 // appends residual at the start of a turn.
                 self.speed_sort(&mut new_actions);
-                new_actions.extend(old_queue);
-                self.queue = new_actions.into();
+                // The new actions go before the rest of the queue.
+                self.queue = old_queue;
+                for &a in new_actions.iter().rev() {
+                    self.queue.push_front(a);
+                }
                 if self.request == RequestState::Move && !self.mid_turn {
                     self.turn_state.round_actions.clear();
                     self.insert_action(Action {
@@ -224,7 +248,10 @@ impl Battle {
         frac: Option<i32>,
         resolution: Resolution,
     ) -> Action {
-        let note_target = resolution != Resolution::Resort;
+        let note_target = !matches!(
+            resolution,
+            Resolution::Resort | Resolution::ResortWithoutUnaware
+        );
         let order = action_order(&kind);
         let mut kind = kind;
         let mut action_frac = 0;
@@ -347,6 +374,14 @@ impl Battle {
     #[track_caller]
     fn resolved_action_speed(&mut self, resolution: Resolution, r: MonRef) -> i32 {
         let m = self.mon(r);
+        if resolution == Resolution::ResortWithoutUnaware {
+            // `sort_unaware_handlers` would sort nothing.
+            if m.is_active && !m.fainted {
+                debug_assert_eq!(m.speed, self.action_speed(r), "stale stored speed");
+                return m.speed;
+            }
+            return self.action_speed(r);
+        }
         if !(resolution.speeds_current() && m.is_active && !m.fainted) {
             return self.action_speed_draw(r);
         }
@@ -474,6 +509,36 @@ impl Battle {
         keys.iter().map(|&(_, i)| actives[i as usize]).collect()
     }
 
+    /// `each_event_order` when no handler will run: only its draws and its
+    /// trace entry matter. The sort draws only between equal speeds, so
+    /// without a tie (and without a trace) it is skipped.
+    #[track_caller]
+    pub(crate) fn each_event_order_draws(&mut self) {
+        if self.rng.trace.is_some() || self.active_speed_tie() {
+            self.each_event_order();
+        }
+    }
+
+    /// Whether two of the Pokémon `each_event_order` sorts have the same speed.
+    fn active_speed_tie(&self) -> bool {
+        let mut speeds = [0i32; MAX_ACTIVE];
+        let mut n = 0;
+        for side in &self.sides {
+            for m in side.mons.iter().take(side.n_active) {
+                if m.is_active && !m.fainted {
+                    if speeds[..n].contains(&m.speed) {
+                        return true;
+                    }
+                    if n < MAX_ACTIVE {
+                        speeds[n] = m.speed;
+                        n += 1;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Showdown `insertChoice` for an already-resolved action.
     pub(super) fn insert_action(&mut self, action: Action) {
         self.insert_actions(&[action]);
@@ -555,7 +620,7 @@ impl Battle {
             Resolution::New,
         );
         // insertChoice places the whole group by its first action.
-        let group: Vec<Action> = charge
+        let group: Small<Action> = charge
             .into_iter()
             .chain(before)
             .chain(std::iter::once(action))
