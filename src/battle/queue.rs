@@ -495,6 +495,36 @@ impl Battle {
         keys.iter().map(|&(_, i)| actives[i as usize]).collect()
     }
 
+    /// `each_event_order` when no handler will run: only its draws and its
+    /// trace entry matter. The sort draws only between equal speeds, so
+    /// without a tie (and without a trace) it is skipped.
+    #[track_caller]
+    pub(crate) fn each_event_order_draws(&mut self) {
+        if self.rng.trace.is_some() || self.active_speed_tie() {
+            self.each_event_order();
+        }
+    }
+
+    /// Whether two of the Pokémon `each_event_order` sorts have the same speed.
+    fn active_speed_tie(&self) -> bool {
+        let mut speeds = [0i32; MAX_ACTIVE];
+        let mut n = 0;
+        for side in &self.sides {
+            for m in side.mons.iter().take(side.n_active) {
+                if m.is_active && !m.fainted {
+                    if speeds[..n].contains(&m.speed) {
+                        return true;
+                    }
+                    if n < MAX_ACTIVE {
+                        speeds[n] = m.speed;
+                        n += 1;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Showdown `insertChoice` for an already-resolved action.
     pub(super) fn insert_action(&mut self, action: Action) {
         self.insert_actions(&[action]);

@@ -87,10 +87,57 @@ impl Battle {
     /// Exchange).
     #[track_caller]
     pub(crate) fn run_update(&mut self) {
+        // Usually no handler can act: then only the order's draws (and its
+        // trace) matter, and without a speed tie it makes none.
+        if !self.any_active(|b, r| b.update_may_act(r)) {
+            self.each_event_order_draws();
+            return;
+        }
         for r in self.each_event_order() {
             self.volatile_update(r);
             self.ability_update(r);
             self.item_update(r);
+        }
+    }
+
+    /// Whether any of `r`'s `Update` handlers could act now: a superset of
+    /// the conditions `volatile_update`, `ability_update` and `item_update`
+    /// test. When it is false for every active Pokémon, none of them does
+    /// anything, so none can make another's act either.
+    fn update_may_act(&self, r: MonRef) -> bool {
+        let m = self.mon(r);
+        let v = &m.vol;
+        if v.attract.is_some() || v.fling || v.syrup_bomb.is_some() {
+            return true;
+        }
+        let ability = match self.raw_ability_kind(r) {
+            AbilityKind::Disguise => true,
+            AbilityKind::StatusImmune(_)
+            | AbilityKind::ThermalExchange
+            | AbilityKind::WaterBubble => m.status != Status::None,
+            AbilityKind::Trace => m.ability_state.seek == Some(true),
+            AbilityKind::IntimidateImmune => v.taunt > 0 || v.confusion > 0,
+            _ => false,
+        };
+        if ability {
+            return true;
+        }
+        if m.hp == 0 {
+            return false;
+        }
+        match self.held_item_kind(r) {
+            Some(ItemKind::SitrusBerry | ItemKind::OranBerry) => m.hp as u32 * 2 <= m.maxhp as u32,
+            Some(ItemKind::CureBerry(_)) => m.status != Status::None || v.confusion > 0,
+            Some(ItemKind::MentalHerb) => {
+                v.attract.is_some()
+                    || v.taunt > 0
+                    || v.encore.is_some()
+                    || v.torment
+                    || v.disable.is_some()
+                    || v.heal_block > 0
+            }
+            Some(ItemKind::LeppaBerry) => m.moves.iter().any(|ms| ms.pp == 0),
+            _ => false,
         }
     }
 

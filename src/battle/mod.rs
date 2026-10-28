@@ -529,6 +529,20 @@ impl Battle {
         out
     }
 
+    /// Whether `f` holds for a non-fainted active Pokémon (those
+    /// `all_active` lists), without building the list.
+    #[inline]
+    pub(crate) fn any_active(&self, f: impl Fn(&Battle, MonRef) -> bool) -> bool {
+        for (s, side) in self.sides.iter().enumerate() {
+            for (slot, m) in side.mons.iter().enumerate().take(side.n_active) {
+                if m.is_active && !m.fainted && f(self, (s, slot)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub(crate) fn can_switch_side(&self, s: usize) -> bool {
         self.can_switch(s)
     }
@@ -669,7 +683,7 @@ impl Battle {
             }
             // eachEvent('BeforeTurn'): no handler acts here, but the sort draws.
             ActionKind::BeforeTurn => {
-                self.each_event_order();
+                self.each_event_order_draws();
             }
             ActionKind::MegaEvo { side, mon } => self.run_mega_evo((side, mon)),
             ActionKind::PriorityCharge { side, mon, id } => {
