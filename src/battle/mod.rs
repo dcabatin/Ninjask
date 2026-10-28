@@ -365,8 +365,13 @@ impl Battle {
         b.add("|clearpoke");
         for s in 0..2 {
             for i in 0..b.sides[s].mons.len() {
-                let details = b.details(s, i);
-                b.add(format!("|poke|{}|{}|", b.sides[s].id(), details));
+                let mut line = String::with_capacity(48);
+                line.push_str("|poke|");
+                line.push_str(b.sides[s].id());
+                line.push('|');
+                b.write_details(s, i, &mut line);
+                line.push('|');
+                b.add(line);
             }
         }
         let size = b

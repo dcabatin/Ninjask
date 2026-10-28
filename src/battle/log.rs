@@ -129,14 +129,28 @@ impl Battle {
     }
 
     pub fn details(&self, s: usize, i: usize) -> String {
-        use std::fmt::Write;
+        let species = &self.dex.species(self.sides[s].mons[i].base_species).name;
+        let mut d = String::with_capacity(species.len() + 16);
+        self.write_details(s, i, &mut d);
+        d
+    }
+
+    /// `details` appended to `d`.
+    pub(crate) fn write_details(&self, s: usize, i: usize, d: &mut String) {
         let m = &self.sides[s].mons[i];
         let species = &self.dex.species(m.base_species).name;
-        let mut d = String::with_capacity(species.len() + 16);
         d.push_str(species);
         if m.level != 100 {
-            // Writing to a String cannot fail.
-            let _ = write!(d, ", L{}", m.level);
+            d.push_str(", L");
+            // The level's decimal digits (a u8), without the formatter.
+            let l = m.level;
+            if l >= 100 {
+                d.push((b'0' + l / 100) as char);
+            }
+            if l >= 10 {
+                d.push((b'0' + l / 10 % 10) as char);
+            }
+            d.push((b'0' + l % 10) as char);
         }
         if m.gender == "M" || m.gender == "F" {
             d.push_str(", ");
@@ -145,7 +159,6 @@ impl Battle {
         if m.shiny {
             d.push_str(", shiny");
         }
-        d
     }
 
     fn health_pair(&self, (s, i): MonRef) -> (String, String) {
