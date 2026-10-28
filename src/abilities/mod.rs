@@ -607,6 +607,12 @@ impl Battle {
         if self.probe {
             return;
         }
+        // Without two handlers there is no sort, so no draw: count, as an
+        // upper bound, the effects below with a handler for the event in
+        // any role.
+        if extra.len() + self.event_handler_bound(event, target, source) < 2 {
+            return;
+        }
         let mut hs: ArrayVec<ModHandler, MAX_SORTED_HANDLERS> = ArrayVec::new();
         hs.extend(extra.iter().copied());
         self.push_event_handlers(&mut hs, event, Role::Own, target);
@@ -625,6 +631,32 @@ impl Battle {
         if hs.len() > 1 {
             self.speed_sort_by(&mut hs, compare_mod);
         }
+    }
+
+    /// An upper bound on the ability and item handlers `event_sort`
+    /// collects: those of the target, the source and every active Pokémon
+    /// with a handler for `event` in any role.
+    #[inline]
+    fn event_handler_bound(&self, event: Event, target: MonRef, source: Option<MonRef>) -> usize {
+        let count = |m: &crate::state::Mon| -> usize {
+            let a = self.dex.ability_handlers[m.ability as usize].has_event(event) as usize;
+            let i = m
+                .item
+                .is_some_and(|i| self.dex.item_handlers[i as usize].has_event(event))
+                as usize;
+            a + i
+        };
+        let mut n = count(self.mon(target));
+        if let Some(src) = source {
+            n += count(self.mon(src));
+        }
+        for side in &self.sides {
+            let k = side.n_active.min(side.mons.len());
+            for m in &side.mons[..k] {
+                n += count(m);
+            }
+        }
+        n
     }
 
     /// Adds `h`'s ability and item handlers for `event` in `role` to an

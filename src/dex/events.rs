@@ -150,6 +150,12 @@ impl EventHandlers {
         self.priority[event as usize][role as usize]
     }
 
+    /// Whether the effect has a handler for `event` in any role.
+    #[inline]
+    pub fn has_event(&self, event: Event) -> bool {
+        self.events & (1 << event as u32) != 0
+    }
+
     /// Whether the effect has a `role` handler for `event`.
     #[inline]
     pub fn has(&self, event: Event, role: Role) -> bool {
