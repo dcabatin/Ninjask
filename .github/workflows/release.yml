@@ -70,7 +70,9 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          # The Pythons the pinned PyO3 supports (a newer one on the runner
+          # fails its version check)
+          args: --release --out dist --interpreter 3.12 3.13
           manylinux: auto
       - name: The wheel works outside the checkout, on the bundled data
         if: matrix.test
