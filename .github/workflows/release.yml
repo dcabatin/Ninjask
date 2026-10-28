@@ -1,0 +1,136 @@
+name: Release
+
+# Pushing a tag vX.Y.Z publishes that version to PyPI (wheels for Linux,
+# macOS and Windows, plus the sdist) and to crates.io. Run by hand
+# (workflow_dispatch), it builds and tests everything without publishing.
+#
+# Both registries use trusted publishing, so the repository holds no tokens:
+# - PyPI: add a trusted publisher for this repository, workflow release.yml,
+#   environment "release" (a pending publisher works before the project
+#   exists).
+# - crates.io: trusted publishing is set up on an existing crate, so the
+#   first version is published by hand (`cargo publish`); then add this
+#   repository and workflow in the crate's settings.
+# The tag must match the version in Cargo.toml and pyproject.toml.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The format exports and test teams that every wheel and the sdist carry
+  # (scripts/bundle_data.sh), made once from the pinned Showdown.
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches both manifests
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          grep -qx "version = \"$v\"" Cargo.toml
+          grep -qx "version = \"$v\"" pyproject.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: ./scripts/setup_showdown.sh
+      - run: ./scripts/bundle_data.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-data
+          path: python/ninjask/data
+
+  wheels:
+    needs: data
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64, test: true }
+          - { os: ubuntu-latest, target: aarch64, test: false }
+          - { os: macos-latest, target: aarch64, test: true }
+          - { os: macos-latest, target: x86_64, test: false }
+          - { os: windows-latest, target: x64, test: true }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-data
+          path: python/ninjask/data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.12
+            3.13
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --find-interpreter
+          manylinux: auto
+      - name: The wheel works outside the checkout, on the bundled data
+        if: matrix.test
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          py="$RUNNER_TEMP/venv/bin/python"; [ -x "$py" ] || py="$RUNNER_TEMP/venv/Scripts/python.exe"
+          "$py" -m pip install --find-links dist ninjask
+          cd "$RUNNER_TEMP"
+          "$py" -c "import ninjask; from ninjask.policy import RandomPolicy; t = ninjask.verification_teams(); print(ninjask.play_engine_game('gen9championsvgc2026regmc', 1, t[0], t[1], RandomPolicy(1), RandomPolicy(2)))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: dist
+
+  sdist:
+    needs: data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-data
+          path: python/ninjask/data
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+  pypi:
+    needs: [wheels, sdist]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{wheels-*,sdist}"
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  crates-io:
+    needs: [wheels, sdist]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

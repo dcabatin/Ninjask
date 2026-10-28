@@ -1,0 +1,10 @@
+target/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.so
+# The Showdown checkout (scripts/setup_showdown.sh) and generated data
+third_party/
+data/
+node_modules/

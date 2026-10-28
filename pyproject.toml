@@ -1,0 +1,47 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "ninjask"
+version = "0.1.0"
+description = "Fast Pokémon VGC (Champions doubles) battle engine checked against Pokémon Showdown"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+readme = "README.md"
+requires-python = ">=3.12"
+keywords = ["pokemon", "showdown", "vgc", "simulator", "battle"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Games/Entertainment :: Simulation",
+]
+dependencies = [
+    # the χ² comparison in ninjask.verify
+    "numpy>=2.0",
+    "scipy>=1.13",
+]
+
+[project.urls]
+Repository = "https://github.com/dcabatin/Ninjask"
+Issues = "https://github.com/dcabatin/Ninjask/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+# The `ninjask` package (python/ninjask) with the compiled module inside it,
+# `ninjask._core`, which the package re-exports (`ninjask.Battle`, ...).
+[tool.maturin]
+features = ["python-module"]
+python-source = "python"
+module-name = "ninjask._core"
+# Release profile keeps debug info for profiling; wheels do not need it
+strip = true
+# The format exports and fixture teams that scripts/bundle_data.sh generates
+# (git ignores them), so an installed wheel needs no Showdown checkout.
+include = [
+    { path = "python/ninjask/data/**/*", format = ["sdist", "wheel"] },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]

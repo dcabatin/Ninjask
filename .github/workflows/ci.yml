@@ -1,0 +1,84 @@
+name: CI
+
+# The README's quick start on a fresh runner, then the checks that define
+# "green":
+#
+#   1. cargo fmt, clippy (with and without the Python features) and
+#      cargo test --release, after the format export, which the tests that
+#      play battles read (they skip without it);
+#   2. the behaviour fingerprint on the fixture teams (2000 games), which
+#      must print 6e2f85907f97e4e9 (README, "Run the checks");
+#   3. exact agreement with pinned Showdown on 200 synthetic games;
+#   4. pytest.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache the pinned Showdown checkout
+        uses: actions/cache@v4
+        with:
+          path: third_party/pokemon-showdown
+          key: showdown-${{ hashFiles('refsim/SHOWDOWN_COMMIT') }}
+
+      - name: Install the package (pip install -e '.[test]')
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e '.[test]'
+
+      - name: Build Pokémon Showdown at the pinned commit
+        run: ./scripts/setup_showdown.sh
+
+      - name: Export the Reg M-C format
+        run: .venv/bin/python -c "import ninjask; ninjask.load('gen9championsvgc2026regmc')"
+
+      - name: Format and lint
+        run: |
+          cargo fmt --check
+          cargo clippy --release --all-targets -- -D warnings
+          cargo clippy --release --all-targets --features python-module -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --release
+
+      - name: Fingerprint (fixture teams, 2000 games)
+        run: |
+          cargo run --release --example fingerprint -- data/derived/format/gen9championsvgc2026regmc.json tests/fixtures/regmc_teams.txt 2000 | tee fingerprint.txt
+          grep -qx "fingerprint 6e2f85907f97e4e9" fingerprint.txt
+
+      - name: Exact agreement with Showdown (200 synthetic games)
+        run: .venv/bin/python scripts/check_reference.py --synthetic --games 200 --workers 4
+
+      - name: Python tests
+        run: .venv/bin/pytest -q
