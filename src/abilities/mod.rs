@@ -539,10 +539,18 @@ impl Battle {
         if m.fainted || !m.is_active {
             return mv.priority;
         }
-        match self.ability_kind(r) {
-            AbilityKind::Prankster if mv.category == Category::Status => mv.priority + 1,
+        // The raw ability first: most have no priority handler, and then
+        // whether it is suppressed does not matter.
+        match self.raw_ability_kind(r) {
+            AbilityKind::Prankster
+                if mv.category == Category::Status && !self.ability_ignored(r) =>
+            {
+                mv.priority + 1
+            }
             AbilityKind::GaleWings
-                if self.dex.type_names[mv.type_ as usize] == "Flying" && m.hp == m.maxhp =>
+                if self.dex.type_names[mv.type_ as usize] == "Flying"
+                    && m.hp == m.maxhp
+                    && !self.ability_ignored(r) =>
             {
                 mv.priority + 1
             }
