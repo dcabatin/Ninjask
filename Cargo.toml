@@ -2,10 +2,12 @@
 name = "ninjask"
 version = "0.1.0"
 edition = "2021"
-description = "Fast Pokémon VGC (Champions doubles) battle engine checked against Pokémon Showdown"
+description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 200 times faster"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/dcabatin/Ninjask"
+documentation = "https://docs.rs/ninjask"
+categories = ["simulation", "game-development"]
 keywords = ["pokemon", "showdown", "vgc", "simulator", "battle"]
 # The crate as published: the engine, its examples and tests, without the
 # Python package and the reference harness (pyproject.toml ships those).

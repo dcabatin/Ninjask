@@ -1,8 +1,8 @@
 //! Exact damage, accuracy, KO chances and turn order, read-only.
 //!
 //! What an expert computes in their head, from the engine's own code: the
-//! damage of a move is `getDamage`'s two phases ([`Battle::damage_base`]
-//! before the random roll, [`Battle::damage_mods`] after it), run for each
+//! damage of a move is `getDamage`'s two phases (`Battle::damage_base`
+//! before the random roll, `Battle::damage_mods` after it), run for each
 //! of the 16 rolls with and without a critical hit, so the calculation and
 //! the battle can't drift apart. Everything the engine models applies:
 //! abilities, items, weather and terrain, screens, a pending Helping Hand,

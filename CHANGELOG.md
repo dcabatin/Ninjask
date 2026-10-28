@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `examples/quickstart.rs`, and `--log` for `examples/bench.rs` (logging on).
+- `refsim/bench_showdown.js`: Showdown's own throughput on the same random
+  games, for comparison.
+- README reorganised around why to use Ninjask, how, and how to contribute;
+  crate-level documentation for docs.rs; issue and pull request templates.
 - LICENSE: the copyright holder's name is corrected to David Cabatingan
   (0.1.0's packages carry the misspelled name).
 

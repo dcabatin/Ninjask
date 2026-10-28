@@ -1,0 +1,36 @@
+name: Bug report
+description: A difference from Pokémon Showdown, a crash, or something that doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Showdown at the pinned commit (`refsim/SHOWDOWN_COMMIT`) is the specification, so any difference from it is a bug.
+        `python scripts/check_reference.py --verbose` prints both simulators' logs and random draws at the first divergence.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: For a parity bug, what Showdown does and what Ninjask does instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The teams (packed format), the seed, and the choices, or a short script. The output of `check_reference.py --verbose` is ideal.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`pip show ninjask`, the crate version, or the commit you built from."
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS and Python or Rust version.

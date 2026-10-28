@@ -23,6 +23,6 @@ pub fn format_export(id: &str) -> Option<String> {
             return Some(text);
         }
     }
-    eprintln!("skipped: no format export {id}.json (see README, Quick start)");
+    eprintln!("skipped: no format export {id}.json (see README, Working from source)");
     None
 }

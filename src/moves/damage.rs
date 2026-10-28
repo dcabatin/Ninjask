@@ -60,7 +60,7 @@ impl Chain {
     }
 }
 
-/// Stat stage multipliers: floor(stat * table[boost]) or floor(stat / table[-boost]).
+/// Stat stage multipliers: `floor(stat * table[boost])` or `floor(stat / table[-boost])`.
 pub fn apply_boost(stat: u32, boost: i8) -> u32 {
     let b = boost.clamp(-6, 6);
     // table = [1, 1.5, 2, 2.5, 3, 3.5, 4] as fractions of 2

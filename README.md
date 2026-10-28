@@ -4,12 +4,169 @@
 [![PyPI](https://img.shields.io/pypi/v/ninjask)](https://pypi.org/project/ninjask/)
 [![crates.io](https://img.shields.io/crates/v/ninjask)](https://crates.io/crates/ninjask)
 
-A fast simulator of Pokémon Champions VGC doubles (Regulation M-C), written in
-Rust with Python bindings. Named after Ninjask, a famously fast Pokémon. It reproduces [Pokémon Showdown](https://github.com/smogon/pokemon-showdown)
-exactly, and is built to run self-play, search and team evaluation at
-thousands of battles per second per CPU core.
+**A Pokémon Champions VGC doubles simulator that matches
+[Pokémon Showdown](https://github.com/smogon/pokemon-showdown) exactly, about
+200 times faster.** Written in Rust, with Python bindings, for bots,
+reinforcement learning, search and large-scale team analysis. Named after
+Ninjask, a famously fast Pokémon.
 
-## Scope
+```sh
+pip install ninjask
+```
+
+## Why Ninjask
+
+If you are building a VGC bot, training an agent with self-play, or asking a
+question that takes millions of battles to answer, Showdown is the reference
+but it is slow, and a simulator that is fast but subtly wrong teaches your
+agent the wrong game. Ninjask is meant to be both:
+
+- **Exact.** Ninjask is a port of Showdown's battle code at a pinned commit.
+  In *reference mode* it uses Showdown's random number generator and makes
+  the same draws in the same order, so a seeded game produces the same log,
+  the same requests and the same state after every input. It matches
+  Showdown on 1,000 of 1,000 seeded games of random legal teams and 1,000 of
+  1,000 games of real tournament teams, and CI replays 200 against Showdown
+  on every change (see [How parity is verified](#how-parity-is-verified)).
+- **Fast.** About 6,000 random games (68,000 turns) per second on one CPU
+  core with logging off, and 36,000 turns per second with the full protocol
+  log on, against Showdown's 175 turns per second on the same machine and
+  teams (`examples/bench.rs --log`, `refsim/bench_showdown.js`). A `Battle` is plain data:
+  copying one for search costs microseconds.
+- **Complete for Reg M-C.** All 511 moves and 166 items in the format, and
+  221 of its 224 abilities (the other three belong only to Pokémon that are
+  not legal in it). Every team of a 549-team pool of public tournament pastes
+  is fully supported. Nothing is silently approximated: `Dex.team_problems`
+  names anything a team uses that the engine does not simulate.
+- **Built for agents.** Besides the battle itself:
+  - a per-player **tracker** that builds what one side knows from the
+    protocol, and reads Showdown's live logs the same way;
+  - **worlds**: battles consistent with one player's view, with the foe's
+    hidden sets filled in by your assumptions, for search under hidden
+    information;
+  - an exact **damage and turn-order calculator** (all 16 rolls, crits,
+    KO chances, Speed with Trick Room, Tailwind and priority) that runs the
+    battle's own damage code, so it can't drift from play;
+  - open team sheets, and Showdown's request and choice formats throughout,
+    so a bot written for Showdown carries over with little change.
+
+What it is not: an agent, a search algorithm or a user interface. It is the
+simulator underneath them, with the tools to prove it matches the reference.
+
+## Quick start
+
+### Python
+
+```sh
+pip install ninjask      # Python 3.12+, Linux, macOS and Windows; the Reg M-C formats are bundled
+```
+
+Play a game between two random policies:
+
+```python
+import ninjask
+from ninjask.policy import RandomPolicy
+
+team1, team2 = ninjask.verification_teams()[:2]   # bundled test teams, Showdown's packed format
+result = ninjask.play_engine_game(
+    "gen9championsvgc2026regmc", 1, team1, team2, RandomPolicy(1), RandomPolicy(2)
+)
+print(result.winner, result.turns)
+```
+
+A policy is any object with `choose(request, log) -> str`: it reads Showdown's
+request JSON and answers in Showdown's choice syntax (`"move 1 1, move 2 2"`),
+so code written for Showdown bots carries over. To drive a battle yourself:
+
+```python
+import json
+from ninjask import Battle, dex
+from ninjask.policy import RandomPolicy
+
+d = dex("gen9championsvgc2026regmc")
+assert d.team_problems(team1) == []  # [] when the engine fully supports the team
+
+b = Battle(d, team1, team2, seed=1)
+b.set_logging(True)
+policy = RandomPolicy(seed=1)
+while not b.ended and b.turn < 150:
+    for side in ("p1", "p2"):
+        if b.needs_choice(side):
+            while True:
+                request = json.loads(b.request(side))            # Showdown's request JSON
+                try:
+                    b.choose(side, policy.choose(request, []))   # e.g. "move 1 1, move 2 2"
+                    break
+                except ValueError:                               # rejected, as Showdown rejects it
+                    pass                                         # (a hidden disable); the request now shows it
+print(b.winner, b.turn)
+print("\n".join(b.log("p1", 0)[:10]))                           # p1's view of the protocol log
+```
+
+`b.copy()` is a cheap, independent copy for search: play a line out without
+touching `b`. `b.damage("p1a", move_id, "p2b")` runs the damage calculation
+(all 16 rolls, crit chance, KO chances) for the Pokémon in those slots.
+
+`Battle.reference(d, team1, team2, "1,2,3,4")` runs a battle in reference
+mode, seeded like Showdown, so it reproduces a Showdown game draw for draw.
+
+### Rust
+
+```sh
+cargo add ninjask
+```
+
+```rust
+use std::{error::Error, sync::Arc};
+use ninjask::{rng::Rng, Battle, Dex};
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let dex = Arc::new(Dex::from_json(&std::fs::read_to_string("gen9championsvgc2026regmc.json")?)?);
+    let pool = std::fs::read_to_string("teams.txt")?; // one packed team per line
+    let teams: Vec<&str> = pool.lines().collect();
+
+    let mut battle = Battle::new(dex, [teams[0], teams[1]], ["Alice", "Bob"], 1)?;
+    let mut rng = Rng::new(1);
+    while !battle.ended && battle.turn < 150 {
+        for side in 0..2 {
+            if battle.side_needs_choice(side) {
+                let choice = battle.random_choice(side, &mut rng); // or any "move 1 1, switch 3"
+                battle.choose(side, &choice)?;
+            }
+        }
+    }
+    println!("{:?} won after {} turns", battle.winner_name(), battle.turn);
+    Ok(())
+}
+```
+
+The full program is [`examples/quickstart.rs`](examples/quickstart.rs). The
+crate reads a format from its JSON export; the Python package carries the
+bundled ones (`ninjask/data/formats/`), and a checkout generates any other.
+
+The [API overview](#api-overview) lists everything else; `cargo doc --open`
+(or [docs.rs](https://docs.rs/ninjask)) documents the crate.
+
+## Contributing and ideas
+
+Contributions are welcome, and the most valuable ones are concrete:
+
+- **Found a difference from Showdown?** That is a bug, whatever its size.
+  Open a [bug report](https://github.com/dcabatin/Ninjask/issues/new?template=bug.yml)
+  with the teams, the seed and the choices that reproduce it;
+  `scripts/check_reference.py --verbose` prints both simulators' logs and
+  random draws at the first divergence.
+- **Have an idea, a use case or a question?** Open an
+  [idea](https://github.com/dcabatin/Ninjask/issues/new?template=idea.yml).
+  Knowing what you are building helps decide what comes next. Things we
+  would like to see: new regulations as they launch, an API that enumerates
+  a turn's chance outcomes exactly (for search and endgame solvers), faster
+  batched bindings for training, and more languages.
+- **Want to write code?** [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the
+  setup, the checks a change must pass and how to port a mechanic from
+  Showdown.
+
+## Scope and parity
 
 - **Format.** Champions doubles under the Reg M-C rules: bring 6, pick 4,
   Mega Evolution, no Terastallization, the Champions stat-point system, and its
@@ -27,30 +184,12 @@ thousands of battles per second per CPU core.
   or *unsupported*. The engine never silently simulates an effect it lacks:
   `Dex.team_problems(team)` lists what a team uses that is unsupported, and
   `scripts/report_support.py` reports which entities block the most teams.
-- **Not included.** No agent, no search, no UI. It is a simulator, with the
-  tools to prove it matches the reference.
 
-## Install
-
-```sh
-pip install ninjask      # Python 3.12+: the engine, with the Reg M-C formats bundled
-cargo add ninjask        # Rust
-```
-
-The Python package bundles the format exports from the pinned Showdown
-(`gen9championsvgc2026regmc`, its open-team-sheets variant
-`gen9championsvgc2026regmcots`, `gen9championsvgc2026regmb` and
-`gen9championsdoublescustomgame`) and a few test teams, so it plays battles
-with no Showdown checkout; see [Use from Python](#use-from-python). The Rust
-crate loads a format from its JSON export (`Dex::from_json`), which you take
-from the Python package (`ninjask/data/formats/`) or generate from a checkout.
-The parity checks, and exporting other formats, need the source checkout and
-Showdown: see Quick start.
-
-## How parity is verified
+### How parity is verified
 
 Showdown at the pinned commit is the specification. Four checks compare the
-engine with it; all need Node.js and the Showdown checkout (see Quick start).
+engine with it; all need Node.js and the Showdown checkout (see
+[Working from source](#working-from-source)).
 
 | Check | What it compares |
 | --- | --- |
@@ -67,7 +206,10 @@ The tests (`cargo test`, `pytest`) cover units of the same machinery: the RNG
 against Node's output, the choice syntax, format loading and the reference
 harness on a few games.
 
-## Quick start
+## Working from source
+
+The parity checks, exporting formats other than the bundled ones, and
+changing the engine need a checkout and the pinned Showdown.
 
 Requirements: Python 3.12 or later, Rust (stable), Node.js 22 or later, git.
 
@@ -119,8 +261,9 @@ python scripts/verify_engine.py --cases 100 --n 300
 python scripts/check_tracker.py --games 100
 python scripts/report_support.py --pool tests/fixtures/regmc_teams.txt
 
-# Throughput and fingerprint
+# Throughput (add --log for logging on), Showdown's for comparison, and the fingerprint
 cargo run --release --example bench -- data/derived/format/gen9championsvgc2026regmc.json tests/fixtures/regmc_teams.txt 20000
+node refsim/bench_showdown.js tests/fixtures/regmc_teams.txt 300
 cargo run --release --example fingerprint -- data/derived/format/gen9championsvgc2026regmc.json tests/fixtures/regmc_teams.txt 2000
 ```
 
@@ -145,41 +288,6 @@ abilities) and `--verbose`; run any script with `--help`.
 `report_support.py` reads a pool of packed teams, ranks the moves, items and
 abilities that keep the most teams unsupported, and writes the supported ones
 as a pool to verify on.
-
-### Use from Python
-
-```python
-import json
-import ninjask
-from ninjask import Battle, dex
-from ninjask.policy import RandomPolicy
-
-FORMAT = "gen9championsvgc2026regmc"
-team1, team2 = ninjask.verification_teams()[:2]   # the bundled test teams
-
-d = dex(FORMAT)                      # loads the format export (bundled, or generated in a checkout)
-assert d.team_problems(team1) == []  # [] when the engine fully supports the team
-
-b = Battle(d, team1, team2, seed=1)  # teams in Showdown's packed format
-b.set_logging(True)
-policy = RandomPolicy(seed=1)        # any object with choose(request, log) -> choice string
-while not b.ended and b.turn < 150:
-    for side in ("p1", "p2"):
-        if b.needs_choice(side):
-            while True:
-                request = json.loads(b.request(side))            # Showdown's request JSON
-                try:
-                    b.choose(side, policy.choose(request, []))   # e.g. "move 1 1, move 2 2"
-                    break
-                except ValueError:                               # rejected, as Showdown rejects it
-                    pass                                         # (a hidden disable); the request now shows it
-print(b.winner, b.turn)
-print("\n".join(b.log("p1", 0)[:10]))                           # p1's view of the protocol log
-```
-
-`Battle.reference(d, team1, team2, "1,2,3,4")` runs the same battle in reference
-mode, seeded with a Showdown seed string. `ninjask.play_engine_game` and
-`ninjask.policy.RandomPolicy` wrap the loop above.
 
 ## API overview
 
@@ -329,6 +437,8 @@ In [`docs/`](docs/):
   engine reproduces).
 - [`adding-a-mechanic.md`](docs/adding-a-mechanic.md): how to add a move,
   ability or item, and how to verify it.
+- [`CHANGELOG.md`](CHANGELOG.md): what changed in each release.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): how to report a bug, propose an idea or send a change.
 
 ## License
 

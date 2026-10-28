@@ -1,4 +1,5 @@
-//! Random-policy throughput: `cargo run --release --example bench -- <dex.json> <teams.txt> [games]`.
+//! Random-policy throughput: `cargo run --release --example bench -- <dex.json> <teams.txt> [games] [--log]`.
+//! Logging is off unless `--log` is given (Showdown always logs; see refsim/bench_showdown.js).
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -20,6 +21,7 @@ fn main() {
         .map(|l| Team::new(&dex, &parse_packed(&dex, l).unwrap()))
         .collect();
     let games: usize = args.get(3).and_then(|x| x.parse().ok()).unwrap_or(20000);
+    let log = args.iter().any(|a| a == "--log");
     let mut rng = Rng::new(7);
     let start = Instant::now();
     let mut turns = 0u64;
@@ -28,7 +30,7 @@ fn main() {
         let t1 = &teams[g % teams.len()];
         let t2 = &teams[(g * 7 + 3) % teams.len()];
         let mut b = Battle::from_teams(dex.clone(), [t1, t2], ["Player 1", "Player 2"], g as u64);
-        b.log_enabled = false;
+        b.log_enabled = log;
         for s in 0..2 {
             let n = b.sides[s].mons.len();
             let mut order: Vec<usize> = (0..n).collect();
