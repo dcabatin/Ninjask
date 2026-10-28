@@ -2,7 +2,7 @@
 
 How to port one more Pokémon Showdown mechanic into the engine, and how to
 show that the port is right. Commands run from the repository's root with
-the Python environment active (see the README's Quick start).
+the Python environment active (see the README's "Working from source").
 
 ## When a port is done
 

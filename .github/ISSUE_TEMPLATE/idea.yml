@@ -1,0 +1,20 @@
+name: Idea or feature request
+description: Something Ninjask should do, a use case it should support, or a question about direction.
+labels: [idea]
+body:
+  - type: textarea
+    id: use
+    attributes:
+      label: What are you trying to do?
+      description: The bot, experiment or analysis you have in mind, and where Ninjask gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: An API, a regulation, a binding, a performance target, or anything else.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've tried or considered

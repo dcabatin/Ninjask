@@ -5,16 +5,24 @@ build-backend = "maturin"
 [project]
 name = "ninjask"
 version = "0.1.0"
-description = "Fast Pokémon VGC (Champions doubles) battle engine checked against Pokémon Showdown"
+description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 200 times faster"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 readme = "README.md"
 requires-python = ">=3.12"
-keywords = ["pokemon", "showdown", "vgc", "simulator", "battle"]
+keywords = ["pokemon", "showdown", "vgc", "simulator", "battle", "reinforcement-learning"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Rust",
     "Topic :: Games/Entertainment :: Simulation",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 dependencies = [
     # the χ² comparison in ninjask.verify
@@ -25,6 +33,7 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/dcabatin/Ninjask"
 Issues = "https://github.com/dcabatin/Ninjask/issues"
+Changelog = "https://github.com/dcabatin/Ninjask/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
