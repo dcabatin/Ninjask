@@ -20,6 +20,9 @@ pub(super) enum Resolution {
     /// `update_speed`: only `getActionSpeed` runs, so the action keeps its
     /// `originalTarget`, and the stored speeds are current.
     Resort,
+    /// `Resort` when no active Pokémon holds Unaware, which re-sorting
+    /// cannot change: its `ModifyBoost` sorts have nothing to sort.
+    ResortWithoutUnaware,
 }
 
 impl Resolution {
@@ -245,7 +248,10 @@ impl Battle {
         frac: Option<i32>,
         resolution: Resolution,
     ) -> Action {
-        let note_target = resolution != Resolution::Resort;
+        let note_target = !matches!(
+            resolution,
+            Resolution::Resort | Resolution::ResortWithoutUnaware
+        );
         let order = action_order(&kind);
         let mut kind = kind;
         let mut action_frac = 0;
@@ -368,6 +374,14 @@ impl Battle {
     #[track_caller]
     fn resolved_action_speed(&mut self, resolution: Resolution, r: MonRef) -> i32 {
         let m = self.mon(r);
+        if resolution == Resolution::ResortWithoutUnaware {
+            // `sort_unaware_handlers` would sort nothing.
+            if m.is_active && !m.fainted {
+                debug_assert_eq!(m.speed, self.action_speed(r), "stale stored speed");
+                return m.speed;
+            }
+            return self.action_speed(r);
+        }
         if !(resolution.speeds_current() && m.is_active && !m.fainted) {
             return self.action_speed_draw(r);
         }

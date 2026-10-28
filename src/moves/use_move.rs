@@ -86,12 +86,13 @@ impl Battle {
 
     /// The `DisableMove` handlers but Imprison's: the Choice lock, Throat
     /// Chop, Taunt, Heal Block, Encore, Disable and (Champions) Fake Out's own.
+    #[inline(always)]
     fn move_disabled_by_effect(&self, r: MonRef, idx: usize) -> bool {
         let m = self.mon(r);
         let ms = &m.moves[idx];
         let v = &m.vol;
         // Usually no volatile disables anything and Gravity is off: only
-        // the move's own conditions (the last two below) remain.
+        // the move's own conditions remain.
         if v.choice_lock.is_none()
             && v.throat_chop == 0
             && v.taunt == 0
@@ -103,6 +104,14 @@ impl Battle {
         {
             return self.move_disabled_by_itself(m, ms);
         }
+        self.move_disabled_by_volatile(r, idx)
+    }
+
+    /// `move_disabled_by_effect` when a disabling volatile or Gravity is up.
+    #[inline(never)]
+    fn move_disabled_by_volatile(&self, r: MonRef, idx: usize) -> bool {
+        let m = self.mon(r);
+        let ms = &m.moves[idx];
         if let Some(lock) = m.vol.choice_lock {
             let choice = self.item_kind(r).map(|k| k.is_choice()).unwrap_or(false);
             if choice && ms.id != lock && m.moves.iter().any(|x| x.id == lock) {
@@ -133,7 +142,7 @@ impl Battle {
     /// The move's own `DisableMove` conditions: `cantusetwice` (Gigaton
     /// Hammer, Blood Moon) right after itself, and Fake Out or First
     /// Impression after the Pokémon's first action.
-    #[inline]
+    #[inline(always)]
     fn move_disabled_by_itself(&self, m: &Mon, ms: &MoveSlot) -> bool {
         (m.last_move == Some(ms.id) && self.dex.mv(ms.id).has(MoveFlag::CantUseTwice))
             || (m.active_move_actions > 0

@@ -40,7 +40,7 @@ enum DamageModHandler {
 }
 
 impl Battle {
-    #[inline]
+    #[inline(always)]
     pub fn item_kind(&self, r: MonRef) -> Option<ItemKind> {
         let item = self.mon(r).item?;
         // Not active (revived in its old slot): its item is ignored (`ignoringItem`).

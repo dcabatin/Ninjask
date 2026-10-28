@@ -629,6 +629,7 @@ impl Battle {
 
     /// Adds `h`'s ability and item handlers for `event` in `role` to an
     /// event's sort (abilities sort ahead of items at equal priority and speed).
+    #[inline(always)]
     fn push_event_handlers<const N: usize>(
         &self,
         hs: &mut ArrayVec<ModHandler, N>,
@@ -649,6 +650,7 @@ impl Battle {
 
     /// `push_event_handlers` for a Pokémon on the field: its `role` (ally
     /// or foe) handlers, then its `onAny` ones, ability before item in each.
+    #[inline(always)]
     fn push_side_event_handlers<const N: usize>(
         &self,
         hs: &mut ArrayVec<ModHandler, N>,

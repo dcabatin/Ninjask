@@ -107,10 +107,16 @@ impl Battle {
 
     /// A Pokémon's log identity ("p1a: Name"); empty when logging is off,
     /// since only log lines use it.
-    pub fn ident(&self, (s, i): MonRef) -> String {
+    #[inline(always)]
+    pub fn ident(&self, r: MonRef) -> String {
         if !self.log_enabled {
             return String::new();
         }
+        self.format_ident(r)
+    }
+
+    #[inline(never)]
+    fn format_ident(&self, (s, i): MonRef) -> String {
         let m = &self.sides[s].mons[i];
         // Illusion names the Pokémon after its disguise.
         let name = m.illusion.as_deref().unwrap_or(&m.name);

@@ -923,8 +923,15 @@ impl Battle {
         ) {
             self.update_speed();
             let mut rest = std::mem::take(&mut self.queue);
+            // Resolving queued actions changes no ability and no active
+            // Pokémon: whether anyone holds Unaware holds for the loop.
+            let resolution = if self.any_unaware_holder() {
+                Resolution::Resort
+            } else {
+                Resolution::ResortWithoutUnaware
+            };
             for a in rest.iter_mut() {
-                let resolved = self.resolve_action_frac(a.kind, Some(a.frac), Resolution::Resort);
+                let resolved = self.resolve_action_frac(a.kind, Some(a.frac), resolution);
                 a.priority = resolved.priority;
                 a.speed = resolved.speed;
             }

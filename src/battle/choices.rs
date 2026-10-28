@@ -444,6 +444,7 @@ impl Battle {
     }
 
     /// Showdown `validTargetLoc` for doubles.
+    #[inline(always)]
     pub(super) fn valid_target_loc(&self, s: usize, slot: usize, loc: i8, target: Target) -> bool {
         let n = self.sides[s].n_active as i8;
         if loc == 0 || loc.abs() > n {
