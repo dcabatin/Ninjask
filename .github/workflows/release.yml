@@ -10,7 +10,8 @@ name: Release
 #   exists).
 # - crates.io: trusted publishing is set up on an existing crate, so the
 #   first version is published by hand (`cargo publish`); then add this
-#   repository and workflow in the crate's settings.
+#   repository and workflow in the crate's settings. A version that is on
+#   crates.io already is skipped.
 # The tag must match the version in Cargo.toml and pyproject.toml.
 
 on:
@@ -129,10 +130,24 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: rust-lang/crates-io-auth-action@v1
+      # A version already on crates.io (such as the first, published by hand)
+      # is skipped, so the run still goes green.
+      - name: Is this version on crates.io already?
+        id: published
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          if curl -fsS https://index.crates.io/ni/nj/ninjask | jq -se --arg v "$v" 'any(.[]; .vers == $v)' >/dev/null; then
+            echo "ninjask $v is on crates.io already; skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.published.outputs.skip != 'true'
+        uses: actions/checkout@v4
+      - if: steps.published.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.published.outputs.skip != 'true'
+        uses: rust-lang/crates-io-auth-action@v1
         id: auth
-      - run: cargo publish
+      - if: steps.published.outputs.skip != 'true'
+        run: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
