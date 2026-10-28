@@ -40,15 +40,9 @@ impl Battle {
     }
 
     /// Imprison (onFoeDisableMove): a move an imprisoning foe knows.
-    fn move_imprisoned(&self, r: MonRef, idx: usize) -> bool {
+    pub(crate) fn move_imprisoned(&self, r: MonRef, idx: usize) -> bool {
         // Rarely anyone imprisons: look at the foes' slots before the foes.
-        let foe_side = &self.sides[1 - r.0];
-        if !foe_side
-            .mons
-            .iter()
-            .take(foe_side.n_active)
-            .any(|m| m.vol.imprison)
-        {
+        if !self.foe_side_imprisons(r.0) {
             return false;
         }
         let id = self.mon(r).moves[idx].id;
@@ -57,8 +51,21 @@ impl Battle {
             .any(|f| self.mon(f).vol.imprison && self.mon(f).moves.iter().any(|x| x.id == id))
     }
 
+    /// Whether a Pokémon in the active slots of the side facing side `s`
+    /// has Imprison up.
+    #[inline]
+    pub(crate) fn foe_side_imprisons(&self, s: usize) -> bool {
+        let foe_side = &self.sides[1 - s];
+        let n = foe_side.n_active.min(foe_side.mons.len());
+        let mut any = false;
+        for m in &foe_side.mons[..n] {
+            any |= m.vol.imprison;
+        }
+        any
+    }
+
     /// Every reason a move slot can't be used but Imprison.
-    fn move_disabled_openly(&self, r: MonRef, idx: usize) -> bool {
+    pub(crate) fn move_disabled_openly(&self, r: MonRef, idx: usize) -> bool {
         self.mon(r).moves[idx].pp == 0 || self.move_disabled_by_effect(r, idx)
     }
 
@@ -82,6 +89,20 @@ impl Battle {
     fn move_disabled_by_effect(&self, r: MonRef, idx: usize) -> bool {
         let m = self.mon(r);
         let ms = &m.moves[idx];
+        let v = &m.vol;
+        // Usually no volatile disables anything and Gravity is off: only
+        // the move's own conditions (the last two below) remain.
+        if v.choice_lock.is_none()
+            && v.throat_chop == 0
+            && v.taunt == 0
+            && v.heal_block == 0
+            && v.encore.is_none()
+            && v.disable.is_none()
+            && !v.torment
+            && self.field.gravity == 0
+        {
+            return self.move_disabled_by_itself(m, ms);
+        }
         if let Some(lock) = m.vol.choice_lock {
             let choice = self.item_kind(r).map(|k| k.is_choice()).unwrap_or(false);
             if choice && ms.id != lock && m.moves.iter().any(|x| x.id == lock) {
@@ -106,14 +127,20 @@ impl Battle {
         if m.vol.disable == Some(ms.id) || self.torment_on_disable_move(r, ms.id) {
             return true;
         }
-        // `cantusetwice` (Gigaton Hammer, Blood Moon): not right after itself.
-        if mv.has(MoveFlag::CantUseTwice) && m.last_move == Some(ms.id) {
-            return true;
-        }
-        matches!(
-            self.dex.move_kind[ms.id as usize],
-            MoveKind::FakeOut | MoveKind::FirstImpression
-        ) && m.active_move_actions > 0
+        self.move_disabled_by_itself(m, ms)
+    }
+
+    /// The move's own `DisableMove` conditions: `cantusetwice` (Gigaton
+    /// Hammer, Blood Moon) right after itself, and Fake Out or First
+    /// Impression after the Pokémon's first action.
+    #[inline]
+    fn move_disabled_by_itself(&self, m: &Mon, ms: &MoveSlot) -> bool {
+        (m.last_move == Some(ms.id) && self.dex.mv(ms.id).has(MoveFlag::CantUseTwice))
+            || (m.active_move_actions > 0
+                && matches!(
+                    self.dex.move_kind[ms.id as usize],
+                    MoveKind::FakeOut | MoveKind::FirstImpression
+                ))
     }
 
     /// Showdown `runMove`: before-move checks, PP, then `useMove`. `slot` is

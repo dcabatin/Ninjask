@@ -596,7 +596,31 @@ impl Battle {
     /// The stored speeds of the active holders of an `onAnyModifyBoost`
     /// handler (Unaware), counted as an event sort counts them: a
     /// suppressed one still sorts.
+    #[inline]
     fn unaware_handler_speeds(&mut self) -> PerActive<i32> {
+        // Almost always nobody holds Unaware: answer that without building
+        // the lists.
+        if !self.any_unaware_holder() {
+            return PerActive::new();
+        }
+        self.unaware_holder_speeds()
+    }
+
+    /// Whether an active Pokémon has Unaware (suppressed or not).
+    #[inline]
+    fn any_unaware_holder(&self) -> bool {
+        self.any_active(|b, r| {
+            matches!(
+                b.dex.ability_kind[b.mon(r).ability as usize],
+                AbilityKind::Unaware
+            )
+        })
+    }
+
+    /// `unaware_handler_speeds` once a holder is on the field.
+    #[cold]
+    #[inline(never)]
+    fn unaware_holder_speeds(&mut self) -> PerActive<i32> {
         let mut holders: PerActive<(MonRef, i32)> = PerActive::new();
         for (s, side) in self.sides.iter().enumerate() {
             for (slot, m) in side.mons.iter().enumerate().take(side.n_active) {
@@ -626,6 +650,10 @@ impl Battle {
     /// speeds: only its draws matter.
     #[track_caller]
     pub(super) fn sort_unaware_handlers(&mut self) {
+        // Fewer than two holders: no sort, so no draw and no trace entry.
+        if !self.any_unaware_holder() {
+            return;
+        }
         let mut speeds = self.unaware_handler_speeds();
         if speeds.len() > 1 {
             self.speed_sort_by(&mut speeds, |a, b| (*b - *a) as i64);

@@ -686,21 +686,36 @@ impl Battle {
         let can_mega = !side.mega_used && self.can_mega_evo(r).is_some();
         // Moves the Pokémon can use. Imprison's hidden disables leave others
         // in the last active Pokémon's request, but Showdown refuses them.
-        let usable = (0..m.moves.len()).filter(|&i| !self.move_disabled(r, i));
+        // `move_disabled`, with Imprison's test of the foes made once.
+        let imprison = self.foe_side_imprisons(s);
+        let usable = (0..m.moves.len()).filter(|&i| {
+            !(self.move_disabled_openly(r, i) || (imprison && self.move_imprisoned(r, i)))
+        });
+        // The target locations of each target type met so far: they depend
+        // only on the type here.
+        type Locs = ArrayVec<i8, { 2 * MAX_ACTIVE_PER_SIDE }>;
+        let mut by_type: ArrayVec<(Target, Locs), 4> = ArrayVec::new();
         let mut any_usable = false;
         for i in usable {
             any_usable = true;
             let mv = self.dex.mv(m.moves[i].id);
             let tt = self.move_target_at_choice(r, mv);
             // Target locations: 1..=n on the foe side, -1..=-n on the user's.
-            let mut targets: ArrayVec<i8, { 2 * MAX_ACTIVE_PER_SIDE }> = ArrayVec::new();
+            let mut targets = Locs::new();
             if side.n_active > 1 && tt.needs_choice() {
-                let n = side.n_active as i8;
-                targets.extend(
-                    (1..=n)
-                        .chain((1..=n).map(|x| -x))
-                        .filter(|&t| self.target_ok(s, slot, t, tt)),
-                );
+                if let Some((_, known)) = by_type.iter().find(|(t, _)| *t == tt) {
+                    targets = known.clone();
+                } else {
+                    let n = side.n_active as i8;
+                    for t in (1..=n).chain((1..=n).map(|x| -x)) {
+                        if self.target_ok(s, slot, t, tt) {
+                            targets.push(t);
+                        }
+                    }
+                    if !by_type.is_full() {
+                        by_type.push((tt, targets.clone()));
+                    }
+                }
             } else {
                 targets.push(0);
             }
