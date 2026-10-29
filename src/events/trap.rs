@@ -1,6 +1,7 @@
 //! `TrapPokemon` and `MaybeTrapPokemon`: trapping effects and their handlers.
 
 use crate::abilities::{compare_mod, ModHandler};
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::kinds::{AbilityKind, ItemKind};
 use crate::state::*;
@@ -24,7 +25,7 @@ impl Battle {
         if self.mon(r).fainted {
             return;
         }
-        let mut tags: Vec<ModHandler> = self
+        let mut tags: Small<ModHandler> = self
             .foes_of(r)
             .into_iter()
             .filter(|&f| self.has_ability(f, AbilityKind::ShadowTag))
@@ -42,7 +43,7 @@ impl Battle {
             v.no_retreat,
             v.octolock.is_some(),
         ];
-        let mut all = vec![ModHandler::new(0, m.speed, 2); own.iter().filter(|&&on| on).count()];
+        let mut all: Small<ModHandler> = smallvec::smallvec![ModHandler::new(0, m.speed, 2); own.iter().filter(|&&on| on).count()];
         all.extend(tags.iter().copied());
         // Fairy Lock, a pseudo-weather: no speed, subOrder 2.
         if self.field.fairy_lock > 0 {

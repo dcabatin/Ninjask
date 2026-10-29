@@ -1,5 +1,6 @@
 //! Berries and other consumed items: `eatItem` and `Eat`, `TryEatItem`, `EatItem`, Ripen, Cud Chew, Harvest, Pickup and Mental Herb.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::events::Event;
 use crate::dex::types::*;
@@ -269,7 +270,7 @@ impl Battle {
         if self.mon(r).item.is_some() {
             return;
         }
-        let targets: Vec<MonRef> = self
+        let targets: Small<MonRef> = self
             .all_active()
             .into_iter()
             .filter(|&t| {
@@ -314,11 +315,11 @@ impl Battle {
     /// its side (`onAllyAfterUseItem`, itself included), by speed, ties drawn.
     pub(crate) fn run_after_use_item(&mut self, r: MonRef) {
         use crate::abilities::{compare_mod, ModHandler};
-        let mut hs: Vec<(Option<MonRef>, ModHandler)> = Vec::new();
+        let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
         if self.has_ability(r, AbilityKind::Unburden) {
             hs.push((None, ModHandler::new(0, self.mon(r).speed, 7)));
         }
-        let mut side: Vec<MonRef> = vec![r];
+        let mut side: Small<MonRef> = smallvec::smallvec![r];
         side.extend(self.allies_of(r));
         for h in side {
             if self.has_ability(h, AbilityKind::Symbiosis)
@@ -331,7 +332,7 @@ impl Battle {
         if hs.len() > 1 {
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
         }
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             match h {
                 None => self.after_use_item(r),
                 Some(h) => self.symbiosis(h, r),

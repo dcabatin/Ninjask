@@ -4,6 +4,7 @@
 //! `sim/battle-actions.ts` / `data/mods/champions/scripts.ts`
 //! (`getDamage`, `modifyDamage`).
 
+use crate::battle::Small;
 use arrayvec::ArrayVec;
 
 use crate::battle::{Battle, MonRef};
@@ -716,7 +717,7 @@ impl Battle {
         use crate::abilities::{compare_mod, ModHandler};
         use crate::kinds::{AbilityKind, ItemKind};
         let speed = self.mon(t).speed;
-        let mut hs: Vec<ModHandler> = Vec::new();
+        let mut hs: Small<ModHandler> = Small::new();
         // The ability's handler (one at most): by the raw ability, except
         // Poison Heal's.
         match self.raw_ability_kind(t) {

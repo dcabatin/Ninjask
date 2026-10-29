@@ -155,7 +155,7 @@ impl Battle {
         let type_name = dex.type_names[move_type as usize].as_str();
         let mut chain = Chain::ONE;
         let mut aura_booster = None;
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             let m = match h {
                 H::Move => self.move_base_power_mod(src, tgt, kind),
                 H::HelpingHand => {
@@ -405,6 +405,7 @@ impl Battle {
 
     /// `ModifySpe` from abilities and the Unburden volatile: Swift Swim and
     /// the other weather abilities, Unburden, Quick Feet, Surge Surfer.
+    #[inline(always)]
     pub(crate) fn ability_speed_mod(&self, r: MonRef) -> Option<(u32, u32)> {
         let m = self.mon(r);
         // The raw ability first: most have no Speed handler, and then

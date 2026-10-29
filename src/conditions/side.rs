@@ -1,5 +1,6 @@
 //! Side conditions: adding them, and the entry hazards' switch-in effects.
 
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::state::*;
@@ -120,9 +121,9 @@ impl Battle {
 
     /// The side's hazards for a Pokémon switching in, with
     /// their creation stamps.
-    pub(crate) fn entry_hazards(&self, r: MonRef) -> Vec<(AHazard, u16)> {
+    pub(crate) fn entry_hazards(&self, r: MonRef) -> Small<(AHazard, u16)> {
         let a = self.side_extras[r.0];
-        let mut out = Vec::new();
+        let mut out = Small::new();
         if a.spikes > 0 {
             out.push((AHazard::Spikes, a.spikes_added));
         }

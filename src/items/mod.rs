@@ -7,6 +7,7 @@ mod fling;
 mod transfer;
 
 use crate::abilities::{compare_mod, ModHandler};
+use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::dex::Move;
@@ -39,7 +40,7 @@ enum DamageModHandler {
 }
 
 impl Battle {
-    #[inline]
+    #[inline(always)]
     pub fn item_kind(&self, r: MonRef) -> Option<ItemKind> {
         let item = self.mon(r).item?;
         // Not active (revived in its old slot): its item is ignored (`ignoringItem`).
@@ -160,7 +161,7 @@ impl Battle {
     /// active holder, fastest first (an ability before an item).
     pub(crate) fn white_herbs_any(&mut self) {
         use crate::abilities::{compare_mod, ModHandler};
-        let mut hs: Vec<(MonRef, bool, ModHandler)> = Vec::new();
+        let mut hs: Small<(MonRef, bool, ModHandler)> = Small::new();
         for r in self.all_active() {
             if self.raw_ability_kind(r) == crate::kinds::AbilityKind::Opportunist {
                 hs.push((r, false, ModHandler::new(0, self.mon(r).speed, 7)));
@@ -173,7 +174,7 @@ impl Battle {
             return;
         }
         self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.2, &b.2));
-        for (r, item, _) in hs {
+        for &(r, item, _) in hs.iter() {
             if item {
                 self.white_herb_check(r);
             } else {
@@ -184,7 +185,7 @@ impl Battle {
 
     /// `eachEvent('TerrainChange')`: terrain seeds activate.
     pub(crate) fn terrain_change(&mut self) {
-        let mut actives: Vec<(MonRef, i32)> = self
+        let mut actives: Small<(MonRef, i32)> = self
             .all_active()
             .into_iter()
             .map(|r| (r, self.mon(r).speed))
@@ -387,7 +388,7 @@ impl Battle {
         let physical = mv.category == Category::Physical;
         let special = mv.category == Category::Special;
         let mut chain = Chain::ONE;
-        for (h, _) in hs {
+        for &(h, _) in hs.iter() {
             match h {
                 H::Metronome => {
                     if let Some((n, d)) = self.metronome_on_modify_damage(src) {

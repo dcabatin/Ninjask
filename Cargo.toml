@@ -2,7 +2,7 @@
 name = "ninjask"
 version = "0.1.0"
 edition = "2021"
-description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 200 times faster"
+description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 250 times faster"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/dcabatin/Ninjask"
@@ -31,9 +31,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 rayon = "1"
 pyo3 = { version = "0.25", features = ["extension-module"], optional = true }
 arrayvec = "0.7"
+smallvec = { version = "1.13", features = ["union", "const_generics"] }
 
 [profile.release]
 opt-level = 3
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 debug = 1

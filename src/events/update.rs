@@ -40,7 +40,7 @@ impl Battle {
         if keyed.len() > 1 {
             self.speed_sort_by(&mut keyed, |a, b| compare_mod(&a.0, &b.0));
         }
-        for (_, k) in keyed {
+        for &(_, k) in keyed.iter() {
             match k {
                 ResidualVol::Attract => self.volatiles_on_update(r),
                 ResidualVol::Fling => self.fling_on_update(r),
@@ -87,10 +87,76 @@ impl Battle {
     /// Exchange).
     #[track_caller]
     pub(crate) fn run_update(&mut self) {
+        // Usually no handler can act: then only the order's draws (and its
+        // trace) matter, and without a speed tie it makes none.
+        // One pass over the active Pokémon: whether a handler may act, and
+        // whether two speeds tie.
+        let mut speeds = [0i32; crate::state::MAX_ACTIVE];
+        let (mut n, mut tie, mut acts) = (0, false, false);
+        for (s, side) in self.sides.iter().enumerate() {
+            for (slot, m) in side.mons.iter().enumerate().take(side.n_active) {
+                if m.is_active && !m.fainted {
+                    acts |= self.update_may_act((s, slot));
+                    tie |= speeds[..n].contains(&m.speed);
+                    if n < speeds.len() {
+                        speeds[n] = m.speed;
+                        n += 1;
+                    }
+                }
+            }
+        }
+        if !acts {
+            // The sort draws only between equal speeds.
+            if tie || self.rng.trace.is_some() {
+                self.each_event_order();
+            }
+            return;
+        }
         for r in self.each_event_order() {
             self.volatile_update(r);
             self.ability_update(r);
             self.item_update(r);
+        }
+    }
+
+    /// Whether any of `r`'s `Update` handlers could act now: a superset of
+    /// the conditions `volatile_update`, `ability_update` and `item_update`
+    /// test. When it is false for every active Pokémon, none of them does
+    /// anything, so none can make another's act either.
+    fn update_may_act(&self, r: MonRef) -> bool {
+        let m = self.mon(r);
+        let v = &m.vol;
+        if v.attract.is_some() || v.fling || v.syrup_bomb.is_some() {
+            return true;
+        }
+        let ability = match self.raw_ability_kind(r) {
+            AbilityKind::Disguise => true,
+            AbilityKind::StatusImmune(_)
+            | AbilityKind::ThermalExchange
+            | AbilityKind::WaterBubble => m.status != Status::None,
+            AbilityKind::Trace => m.ability_state.seek == Some(true),
+            AbilityKind::IntimidateImmune => v.taunt > 0 || v.confusion > 0,
+            _ => false,
+        };
+        if ability {
+            return true;
+        }
+        if m.hp == 0 {
+            return false;
+        }
+        match self.held_item_kind(r) {
+            Some(ItemKind::SitrusBerry | ItemKind::OranBerry) => m.hp as u32 * 2 <= m.maxhp as u32,
+            Some(ItemKind::CureBerry(_)) => m.status != Status::None || v.confusion > 0,
+            Some(ItemKind::MentalHerb) => {
+                v.attract.is_some()
+                    || v.taunt > 0
+                    || v.encore.is_some()
+                    || v.torment
+                    || v.disable.is_some()
+                    || v.heal_block > 0
+            }
+            Some(ItemKind::LeppaBerry) => m.moves.iter().any(|ms| ms.pp == 0),
+            _ => false,
         }
     }
 

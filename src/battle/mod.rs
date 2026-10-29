@@ -37,6 +37,9 @@ pub type MonRef = (usize, usize);
 pub type PerActive<T> = ArrayVec<T, MAX_ACTIVE>;
 /// A list of active Pokémon.
 pub type ActiveList = PerActive<MonRef>;
+/// A short list (event handlers, the Pokémon a move reached) held inline,
+/// spilling to the heap past `N`.
+pub(crate) type Small<T, const N: usize = 4> = smallvec::SmallVec<[T; N]>;
 
 /// Showdown's prefix for a choice refused on information the request hid.
 pub const UNAVAILABLE: &str = "[Unavailable choice] ";
@@ -362,8 +365,13 @@ impl Battle {
         b.add("|clearpoke");
         for s in 0..2 {
             for i in 0..b.sides[s].mons.len() {
-                let details = b.details(s, i);
-                b.add(format!("|poke|{}|{}|", b.sides[s].id(), details));
+                let mut line = String::with_capacity(48);
+                line.push_str("|poke|");
+                line.push_str(b.sides[s].id());
+                line.push('|');
+                b.write_details(s, i, &mut line);
+                line.push('|');
+                b.add(line);
             }
         }
         let size = b
@@ -526,6 +534,20 @@ impl Battle {
         out
     }
 
+    /// Whether `f` holds for a non-fainted active Pokémon (those
+    /// `all_active` lists), without building the list.
+    #[inline]
+    pub(crate) fn any_active(&self, f: impl Fn(&Battle, MonRef) -> bool) -> bool {
+        for (s, side) in self.sides.iter().enumerate() {
+            for (slot, m) in side.mons.iter().enumerate().take(side.n_active) {
+                if m.is_active && !m.fainted && f(self, (s, slot)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub(crate) fn can_switch_side(&self, s: usize) -> bool {
         self.can_switch(s)
     }
@@ -579,7 +601,31 @@ impl Battle {
     /// The stored speeds of the active holders of an `onAnyModifyBoost`
     /// handler (Unaware), counted as an event sort counts them: a
     /// suppressed one still sorts.
+    #[inline]
     fn unaware_handler_speeds(&mut self) -> PerActive<i32> {
+        // Almost always nobody holds Unaware: answer that without building
+        // the lists.
+        if !self.any_unaware_holder() {
+            return PerActive::new();
+        }
+        self.unaware_holder_speeds()
+    }
+
+    /// Whether an active Pokémon has Unaware (suppressed or not).
+    #[inline]
+    fn any_unaware_holder(&self) -> bool {
+        self.any_active(|b, r| {
+            matches!(
+                b.dex.ability_kind[b.mon(r).ability as usize],
+                AbilityKind::Unaware
+            )
+        })
+    }
+
+    /// `unaware_handler_speeds` once a holder is on the field.
+    #[cold]
+    #[inline(never)]
+    fn unaware_holder_speeds(&mut self) -> PerActive<i32> {
         let mut holders: PerActive<(MonRef, i32)> = PerActive::new();
         for (s, side) in self.sides.iter().enumerate() {
             for (slot, m) in side.mons.iter().enumerate().take(side.n_active) {
@@ -609,6 +655,10 @@ impl Battle {
     /// speeds: only its draws matter.
     #[track_caller]
     pub(super) fn sort_unaware_handlers(&mut self) {
+        // Fewer than two holders: no sort, so no draw and no trace entry.
+        if !self.any_unaware_holder() {
+            return;
+        }
         let mut speeds = self.unaware_handler_speeds();
         if speeds.len() > 1 {
             self.speed_sort_by(&mut speeds, |a, b| (*b - *a) as i64);
@@ -666,7 +716,7 @@ impl Battle {
             }
             // eachEvent('BeforeTurn'): no handler acts here, but the sort draws.
             ActionKind::BeforeTurn => {
-                self.each_event_order();
+                self.each_event_order_draws();
             }
             ActionKind::MegaEvo { side, mon } => self.run_mega_evo((side, mon)),
             ActionKind::PriorityCharge { side, mon, id } => {
@@ -740,7 +790,7 @@ impl Battle {
             ActionKind::RunSwitch { side, mon } => {
                 switch_hp = Some(((side, mon), self.mon((side, mon)).hp));
                 // Batch consecutive runSwitch actions (Showdown `runSwitch`).
-                let mut switchers = vec![(side, mon)];
+                let mut switchers: Small<MonRef> = smallvec::smallvec![(side, mon)];
                 while let Some(ActionKind::RunSwitch { side, mon }) =
                     self.queue.front().map(|a| a.kind)
                 {
@@ -873,8 +923,15 @@ impl Battle {
         ) {
             self.update_speed();
             let mut rest = std::mem::take(&mut self.queue);
+            // Resolving queued actions changes no ability and no active
+            // Pokémon: whether anyone holds Unaware holds for the loop.
+            let resolution = if self.any_unaware_holder() {
+                Resolution::Resort
+            } else {
+                Resolution::ResortWithoutUnaware
+            };
             for a in rest.iter_mut() {
-                let resolved = self.resolve_action_frac(a.kind, Some(a.frac), Resolution::Resort);
+                let resolved = self.resolve_action_frac(a.kind, Some(a.frac), resolution);
                 a.priority = resolved.priority;
                 a.speed = resolved.speed;
             }
@@ -958,7 +1015,7 @@ impl Battle {
             m.vol.heal_block > 0,
             m.vol.torment,
         ];
-        let mut keys: Vec<ModHandler> = own
+        let mut keys: Small<ModHandler> = own
             .iter()
             .filter(|&&on| on)
             .map(|_| ModHandler::new(0, m.speed, 2))
@@ -986,7 +1043,8 @@ impl Battle {
             .item
             .map(|i| self.dex.item(i).name.clone())
             .unwrap_or_default();
-        let sp = self.dex.species(mega).clone();
+        let dex = self.dex.clone();
+        let sp = dex.species(mega);
         {
             let m = self.mon_mut(r);
             // formeChange(isPermanent): the Mega becomes the base species.

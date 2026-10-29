@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "ninjask"
 version = "0.1.0"
-description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 200 times faster"
+description = "A Pokémon Champions VGC doubles simulator that matches Pokémon Showdown exactly, about 250 times faster"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 readme = "README.md"
