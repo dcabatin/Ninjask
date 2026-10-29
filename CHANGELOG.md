@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `ninjask.load()` parses each format export once per process (keyed on the
+  file and its modification time), as `dex()` already did; the spec is shared,
+  so treat it as read-only.
 - The open-team-sheets format `gen9championsvgc2026regmcots` reports the base
   format's name, as PKMN Arena and Showdown do, so its `|tier|` line no longer
   ends in "OTS". Its id and forced-open sheets are unchanged.
