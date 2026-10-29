@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The open-team-sheets format `gen9championsvgc2026regmcots` reports the base
+  format's name, as PKMN Arena and Showdown do, so its `|tier|` line no longer
+  ends in "OTS". Its id and forced-open sheets are unchanged.
 - `examples/quickstart.rs`, and `--log` for `examples/bench.rs` (logging on).
 - `refsim/bench_showdown.js`: Showdown's own throughput on the same random
   games, for comparison.

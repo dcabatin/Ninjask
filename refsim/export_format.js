@@ -45,7 +45,9 @@ if (!format.exists && DERIVED_FORMATS[formatId]) {
 	if (!base.ruleset.includes(from)) throw new Error(`${baseId} has no "${from}" rule to swap`);
 	format = new Format({
 		id: formatId,
-		name: `${base.name} OTS`,
+		// The base format's name: PKMN Arena's open-sheets games print it in
+		// their |tier| line, as Showdown does when it shows the sheets.
+		name: base.name,
 		mod: base.mod,
 		effectType: 'Format',
 		gameType: base.gameType,
@@ -217,7 +219,9 @@ for (const m of moves) {
 
 const out = {
 	format: {
-		id: format.id,
+		// A derived format's own id: Format derives one from the name, which is
+		// the base format's.
+		id: derivedFrom ? formatId : format.id,
 		name: format.name,
 		...(derivedFrom ? { derivedFrom } : {}),
 		mod: format.mod,
