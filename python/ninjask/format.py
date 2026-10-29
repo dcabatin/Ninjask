@@ -6,7 +6,7 @@ import json
 import math
 import subprocess
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 from ninjask.ids import to_id
@@ -127,4 +127,16 @@ def export_path(format_id: str, refresh: bool = False) -> Path:
 
 
 def load(format_id: str, refresh: bool = False) -> FormatSpec:
-    return FormatSpec(json.loads(export_path(format_id, refresh).read_text()))
+    """The format's rules and data. Loaded once per export file and process:
+    agents and game loops call this per game, and an export is ~700 KB of
+    JSON. The spec is shared, so treat it as read-only; `refresh` re-exports
+    and reloads."""
+    if refresh:
+        _parse.cache_clear()
+    path = export_path(format_id, refresh)
+    return _parse(str(path), path.stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=8)
+def _parse(path: str, mtime_ns: int) -> FormatSpec:
+    return FormatSpec(json.loads(Path(path).read_text()))

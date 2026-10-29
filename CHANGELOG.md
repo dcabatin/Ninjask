@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `ninjask.load()` parses each format export once per process (keyed on the
+  file and its modification time), as `dex()` already did; the spec is shared,
+  so treat it as read-only.
+- The open-team-sheets format `gen9championsvgc2026regmcots` reports the base
+  format's name, as PKMN Arena and Showdown do, so its `|tier|` line no longer
+  ends in "OTS". Its id and forced-open sheets are unchanged.
 - README: speed figures re-measured after the throughput work.
 - `examples/quickstart.rs`, and `--log` for `examples/bench.rs` (logging on).
 - `refsim/bench_showdown.js`: Showdown's own throughput on the same random

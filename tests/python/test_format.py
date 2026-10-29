@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from ninjask.format import STATS, load
@@ -71,3 +73,18 @@ def test_export_path_prefers_generated_then_bundled(tmp_path, monkeypatch):
     assert fmt.export_path("x") == bundled / "x.json"  # a wheel's copy
     (cache / "x.json").write_text("{}")
     assert fmt.export_path("x") == cache / "x.json"  # generated data first
+
+
+def test_load_is_cached_per_export_file(tmp_path, monkeypatch):
+    import os
+
+    import ninjask.format as fmt
+
+    monkeypatch.setattr(fmt, "CACHE", tmp_path)
+    path = tmp_path / "x.json"
+    path.write_text(json.dumps({"format": {"id": "x"}, "species": [], "moves": [], "items": [], "abilities": []}))
+    first = fmt.load("x")
+    assert fmt.load("x") is first  # parsed once
+    path.write_text(json.dumps({"format": {"id": "y"}, "species": [], "moves": [], "items": [], "abilities": []}))
+    os.utime(path, ns=(path.stat().st_atime_ns, path.stat().st_mtime_ns + 1_000_000))
+    assert fmt.load("x").id == "y"  # a rewritten export is read again
