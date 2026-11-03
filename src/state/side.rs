@@ -66,7 +66,7 @@ impl SideCond {
 }
 
 /// Side conditions with their remaining turns (0 = not active).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct SideConditions {
     pub tailwind: u8,
     pub reflect: u8,
@@ -134,7 +134,7 @@ pub const MAX_ACTIVE_PER_SIDE: usize = 2;
 /// The most Pokémon on the field at once.
 pub const MAX_ACTIVE: usize = 2 * MAX_ACTIVE_PER_SIDE;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Side {
     pub index: usize,
     pub name: String,
@@ -162,7 +162,7 @@ pub struct Side {
 }
 
 /// Hidden information a refused choice reveals.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Reveal {
     /// Every move the end-of-turn pass disabled, Imprison's hidden ones included.
     Disabled,
@@ -204,14 +204,14 @@ pub(crate) struct SlotConds {
 }
 
 /// Future Sight's slot condition: the turn it lands, and its user.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct FutureState {
     pub ending_turn: u32,
     pub source: MonRef,
 }
 
 /// The side conditions on one side.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct SideExtras {
     /// Safeguard: turns left, 0 = none.
     pub safeguard: u8,
@@ -225,7 +225,7 @@ pub(crate) struct SideExtras {
 }
 
 /// Entry hazards (switch-in handlers, battle/switching.rs runs them).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum AHazard {
     Spikes,
     StickyWeb,

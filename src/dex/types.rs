@@ -110,7 +110,7 @@ pub const BOOST_ORDER: [u8; 7] = [0, 1, 2, 3, 4, 5, 6];
 /// Boosts from move data with the order the data lists them in, which is
 /// the order Showdown's `boost` applies and announces them (Shell Smash
 /// lowers Defense first).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MoveBoosts {
     pub vals: Boosts,
     /// Stat indices: the listed ones in the data's order, then the rest.

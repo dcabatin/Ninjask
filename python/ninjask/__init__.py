@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from ninjask._extension import module as _compiled
 
 if TYPE_CHECKING:
-    from ninjask._core import ACTION_FIELDS, ACTION_WIDTH, IDS_LEN, OBS_LEN, Batch, Battle, Dex, Tracker
+    from ninjask._core import ACTION_FIELDS, ACTION_WIDTH, IDS_LEN, OBS_LEN, Batch, Battle, BattleStateKey, Dex, EnumerationMode, Outcome, Tracker
 else:
     Dex = _compiled.Dex
     Battle = _compiled.Battle
@@ -31,6 +31,9 @@ else:
     IDS_LEN = _compiled.IDS_LEN
     ACTION_FIELDS = _compiled.ACTION_FIELDS
     ACTION_WIDTH = _compiled.ACTION_WIDTH
+    Outcome = _compiled.Outcome
+    EnumerationMode = _compiled.EnumerationMode
+    BattleStateKey = _compiled.BattleStateKey
 
 from ninjask.format import export_path, load  # noqa: E402
 from ninjask.ids import to_id  # noqa: E402

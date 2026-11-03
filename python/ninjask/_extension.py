@@ -15,7 +15,7 @@ from importlib.metadata import entry_points
 from types import ModuleType
 
 GROUP = "ninjask.extension"
-CLASSES = ("Dex", "Battle", "Tracker", "Batch")
+CLASSES = ("Dex", "Battle", "Tracker", "Batch", "Outcome", "EnumerationMode", "BattleStateKey")
 
 
 def load() -> ModuleType:

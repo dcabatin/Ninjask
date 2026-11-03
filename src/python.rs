@@ -55,6 +55,55 @@ fn le_bytes<'py, const N: usize, T: Copy>(
     pyo3::types::PyBytes::new(py, &raw)
 }
 
+/// Damage enumeration policy. Other chance events are exhaustive in both modes.
+#[pyclass(name = "EnumerationMode", module = "ninjask", eq, eq_int, from_py_object)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PyEnumerationMode {
+    Precise,
+    AlmostPrecise,
+}
+impl From<PyEnumerationMode> for crate::EnumerationMode {
+    fn from(m: PyEnumerationMode) -> Self {
+        match m {
+            PyEnumerationMode::Precise => Self::Precise,
+            PyEnumerationMode::AlmostPrecise => Self::AlmostPrecise,
+        }
+    }
+}
+
+#[pyclass(name = "Outcome", module = "ninjask", frozen)]
+pub struct PyOutcome {
+    inner: crate::Outcome,
+}
+#[pymethods]
+impl PyOutcome {
+    #[getter]
+    fn probability(&self) -> f64 {
+        self.inner.probability
+    }
+    #[getter]
+    fn battle(&self) -> PyBattle {
+        PyBattle {
+            inner: self.inner.battle.clone(),
+        }
+    }
+}
+
+#[pyclass(name = "BattleStateKey", module = "ninjask", frozen, eq)]
+#[derive(Clone, PartialEq, Eq)]
+pub struct PyBattleStateKey {
+    inner: crate::BattleStateKey,
+}
+#[pymethods]
+impl PyBattleStateKey {
+    fn __hash__(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.inner.hash(&mut h);
+        h.finish()
+    }
+}
+
 /// "p1" or "p2" as a side index.
 pub fn side_index(side: &str) -> PyResult<usize> {
     match side {
@@ -353,6 +402,34 @@ impl PyBattle {
         let s = side_index(side)?;
         let choice = indexed_choice(&self.inner, s, index)?;
         self.inner.choose(s, &choice).map_err(PyValueError::new_err)
+    }
+
+    /// Enumerate to the next request. Empty strings preserve already-submitted choices.
+    #[pyo3(signature = (choice_p1, choice_p2, mode=PyEnumerationMode::Precise))]
+    fn enumerate_outcomes(
+        &self,
+        py: Python<'_>,
+        choice_p1: &str,
+        choice_p2: &str,
+        mode: PyEnumerationMode,
+    ) -> PyResult<Vec<PyOutcome>> {
+        py.detach(|| {
+            self.inner
+                .enumerate_outcomes_text(choice_p1, choice_p2, mode.into())
+        })
+        .map(|outcomes| {
+            outcomes
+                .into_iter()
+                .map(|inner| PyOutcome { inner })
+                .collect()
+        })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn state_key(&self) -> PyBattleStateKey {
+        PyBattleStateKey {
+            inner: self.inner.state_key(),
+        }
     }
 
     fn log(&self, viewer: &str, start: usize) -> Vec<String> {
@@ -766,6 +843,9 @@ impl PyBatch {
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PyEnumerationMode>()?;
+    m.add_class::<PyOutcome>()?;
+    m.add_class::<PyBattleStateKey>()?;
     m.add_class::<PyDex>()?;
     m.add_class::<PyBattle>()?;
     m.add_class::<PyTracker>()?;

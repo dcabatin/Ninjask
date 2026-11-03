@@ -56,6 +56,7 @@ pub mod events;
 pub mod items;
 pub mod kinds;
 pub mod moves;
+pub mod outcome;
 pub mod projection;
 pub mod rng;
 pub mod state;
@@ -68,3 +69,6 @@ pub mod python;
 
 pub use battle::Battle;
 pub use dex::Dex;
+
+pub use battle::BattleStateKey;
+pub use outcome::{EnumerationError, EnumerationMode, Outcome};

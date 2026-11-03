@@ -4,6 +4,9 @@
 
 ### Added
 
+- Add Rust and Python outcome enumeration for search and regret minimization,
+  with exhaustive chance probabilities or a damage-endpoint approximation,
+  and hashable full battle-state keys.
 - **A native interface for training**, with no JSON and no strings in the
   loop:
   - `Battle.legal_choices(side)` lists the choices the side's request
