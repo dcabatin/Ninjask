@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add Rust and Python outcome enumeration for search and regret minimization,
+  with exhaustive chance probabilities or a damage-endpoint approximation,
+  and hashable full battle-state keys.
+
 ## 0.2.0 (2026-10-29)
 
 Behaviour is unchanged: every seeded game gives the same logs, requests and

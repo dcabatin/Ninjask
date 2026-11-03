@@ -423,7 +423,7 @@ impl Battle {
             def_boost,
         );
         let base = damage::base_damage(m.level as u32, 40, atk, def) + 2;
-        let roll = self.rng.random(16);
+        let roll = self.rng.random_damage(16);
         (base * (100 - roll) / 100).max(1)
     }
 

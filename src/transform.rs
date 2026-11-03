@@ -7,7 +7,7 @@ use crate::state::MoveSlot;
 /// What a transformed Pokémon was: Showdown keeps its own move slots
 /// (`baseMoveSlots`, with their PP and stored disabled flags) and stats
 /// (`baseStoredStats`) while `moveSlots` and `storedStats` are copies.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Transformed {
     pub moves: Vec<MoveSlot>,
     pub stats: [u16; 6],

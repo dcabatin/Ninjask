@@ -431,7 +431,7 @@ impl Battle {
         }
         self.note_hit_crit(tgt, crit);
         let base = self.damage_base(src, tgt, mv, kind, move_type, type_changed, crit);
-        let roll = self.rng.random(16);
+        let roll = self.rng.random_damage(16);
         let mods = self.damage_mods(src, tgt, mv, kind, move_type, crit, spread, roll);
         modify_damage(base, &mods)
     }

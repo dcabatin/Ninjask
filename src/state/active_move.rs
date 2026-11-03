@@ -8,7 +8,7 @@ pub type SideName = (usize, std::sync::Arc<str>);
 
 /// What the battle keeps about the move in use: the Showdown `activeMove` and its
 /// hit data.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ActiveMove {
     /// Showdown `activeMove` (its id) while a move action runs: what
     /// `clearActiveMove` makes the battle's `lastMove` unless a failure cleared it.
@@ -74,7 +74,7 @@ pub struct ActiveMove {
 
 /// Move bookkeeping that outlives one move: the last move used, faint-queue
 /// kills, queued Rounds and targets, and event-sort flags.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TurnState {
     /// Showdown `battle.lastMove` (Copycat).
     pub last_move: Option<MoveId>,

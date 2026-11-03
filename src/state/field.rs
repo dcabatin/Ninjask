@@ -94,7 +94,7 @@ impl Terrain {
 }
 
 /// Field state: weather, terrain and the pseudo-weathers with remaining turns.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Field {
     pub weather: Option<crate::state::Weather>,
     pub weather_turns: u8,

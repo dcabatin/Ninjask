@@ -6,6 +6,10 @@
 //! Each function names the Showdown code it ports. Pokémon are addressed by
 //! (side, index into `side.mons`); index == position for active Pokémon.
 
+mod enumerate;
+mod state_key;
+pub use state_key::BattleStateKey;
+
 mod bookkeeping;
 mod choices;
 pub mod log;

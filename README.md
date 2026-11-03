@@ -453,3 +453,57 @@ Company, nor by Pokémon Showdown. Pokémon and Pokémon character names are
 trademarks of their respective owners, used here only to identify the game
 mechanics the engine simulates. No official artwork, sprites, sounds or other
 game assets are included.
+
+
+## Enumerating chance outcomes
+
+`Battle::enumerate_outcomes(&choice_p1, &choice_p2, mode)` accepts the existing
+structured side choices (`&[SlotChoice]`) and returns
+`Result<Vec<Outcome>, EnumerationError>`. Each outcome contains `probability`
+(`f64`) and a cloned `battle`. Python uses the existing choice-string syntax:
+
+```python
+from ninjask import EnumerationMode
+
+outcomes = battle.enumerate_outcomes(
+    "move 1 1, move 2 2", "move 1 1, move 1 2", EnumerationMode.Precise
+)
+expected_value = sum(o.probability * evaluate(o.battle) for o in outcomes)
+```
+
+Enumeration preserves the input and any already-submitted choices. Supply an
+empty choice (`&[]` in Rust, `""` in Python) for a side that does not need one.
+Execution stops at the next player decision request or battle end, including
+mid-turn pivot/replacement requests; the returned battles preserve the remaining
+queue. Team preview is not supported by this API. Invalid choices return an
+error (`ValueError` in Python).
+
+`Precise` exhaustively enumerates the integer outcomes of the existing 32-bit
+scaling rule, accumulating probabilities in floating point. `AlmostPrecise`
+enumerates only the minimum and maximum damage-variance rolls, each with weight
+1/2, including confusion damage and each hit of a multi-hit move. All other
+chance events remain exhaustive. These endpoint weights approximate the damage
+distribution; they are not the actual probability of rolling either endpoint.
+
+Execution replays explicit decision paths on fresh clones and never calls a
+PRNG. Equivalent completed states are merged and their weights summed. The
+number of paths can grow exponentially; there is no sampling, pruning or silent
+truncation. Returned battles retain the input RNG snapshot for subsequent
+ordinary play; enumeration itself is independent of that snapshot.
+
+`battle.state_key()` creates an immutable, hashable `BattleStateKey` containing
+full future-relevant simulator state, including pending choices and queued
+actions. Keys exclude logs, RNG state and diagnostics, and are scoped to the
+same shared Dex allocation (independently loaded dexes stay distinct). Merged
+outcomes retain the first representative battle's logs and diagnostics, not a
+history of every contributing path. These keys are not player information-set
+keys for imperfect-information training. Python `Outcome.battle` returns an
+independent copy, so modifying it cannot change the stored outcome.
+
+
+Compare enumeration modes with `cargo run --release --example bench_outcomes`.
+It uses the self-contained enumeration test fixture: no damage, one hit, a
+two-hit move, and both players attacking. Setup is excluded, logging is off,
+and timings are medians of seven alternating batches. Output includes merged
+state counts. These synthetic singles scenarios isolate damage branching;
+measure your training positions separately before projecting throughput.

@@ -12,7 +12,7 @@ pub const RECHARGE: usize = usize::MAX - 1;
 /// called): the action's `id` is the move.
 pub const EXTERNAL: usize = usize::MAX - 2;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct MoveSlot {
     pub id: MoveId,
     pub pp: u8,
@@ -24,7 +24,7 @@ pub struct MoveSlot {
 
 /// Volatile effects a Pokémon can carry. A volatile not represented here is
 /// not simulated.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Volatiles {
     pub flinch: bool,
     /// Turns of confusion left (0 = not confused).
@@ -196,7 +196,7 @@ pub struct Volatiles {
 ///
 /// Do not reorder the variants: each discriminant is an index into
 /// `Volatiles::added`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ResidualVol {
     ThroatChop,
     Taunt,
@@ -249,7 +249,7 @@ pub const RESIDUAL_VOLS: usize = ResidualVol::Count as usize;
 
 /// `Volatiles::added`: an array wrapper, since arrays longer than 32 have no
 /// `Default`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AddedStamps(pub [u32; RESIDUAL_VOLS]);
 
 impl Default for AddedStamps {
@@ -272,7 +272,7 @@ impl std::ops::IndexMut<usize> for AddedStamps {
 }
 
 /// Whether a Pokémon can't choose to switch out.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Trapped {
     #[default]
     No,
@@ -283,7 +283,7 @@ pub enum Trapped {
 
 /// Showdown's `abilityState` fields. Reset when the Pokémon switches in or
 /// its ability changes; kept while it is benched.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct AbilityState {
     /// Trace still looking for an ability to copy (`seek`).
     pub seek: Option<bool>,
@@ -315,7 +315,7 @@ pub struct AbilityState {
     pub fallen: Option<u8>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Mon {
     // Identity and stats
     /// The Pokémon's name, which identifies it within its side. Shared, so
@@ -449,14 +449,14 @@ pub struct Mon {
 
 /// Counter's one-turn volatile (`effectState.slot` and `.damage`): where the
 /// last physical hit came from, as (side, position), and double its damage.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct CounterVol {
     pub slot: Option<(u8, u8)>,
     pub damage: u32,
 }
 
 /// The Metronome item's volatile (`lastMove` and `numConsecutive`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct MetronomeVol {
     pub last_move: Option<MoveId>,
     pub num: u16,
@@ -466,7 +466,7 @@ pub struct MetronomeVol {
 /// (`damageValue` a number): who hit, how hard (the last hit's damage), and
 /// from which slot. The source is named by its side and name, which outlast
 /// the position swaps of switching.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Attacker {
     pub side: u8,
     pub name: Arc<str>,

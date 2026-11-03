@@ -19,11 +19,14 @@ from typing import TYPE_CHECKING
 from ninjask._extension import module as _compiled
 
 if TYPE_CHECKING:
-    from ninjask._core import Battle, Dex, Tracker
+    from ninjask._core import Battle, Dex, Tracker, Outcome, EnumerationMode, BattleStateKey
 else:
     Dex = _compiled.Dex
     Battle = _compiled.Battle
     Tracker = _compiled.Tracker
+    Outcome = _compiled.Outcome
+    EnumerationMode = _compiled.EnumerationMode
+    BattleStateKey = _compiled.BattleStateKey
 
 from ninjask.format import export_path, load  # noqa: E402
 from ninjask.ids import to_id  # noqa: E402
