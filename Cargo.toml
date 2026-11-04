@@ -11,7 +11,9 @@ categories = ["simulation", "game-development"]
 keywords = ["pokemon", "showdown", "vgc", "simulator", "battle"]
 # The crate as published: the engine, its examples and tests, without the
 # Python package and the reference harness (pyproject.toml ships those).
-include = ["src/", "examples/", "tests/", "LICENSE", "NOTICE", "README.md", "CHANGELOG.md", "Cargo.toml", "Cargo.lock"]
+# Anchored at the root ("/"), or "src/" and "README.md" would also match
+# third_party/ and .venv/ in a working checkout.
+include = ["/src/", "/examples/", "/tests/", "/LICENSE", "/NOTICE", "/README.md", "/CHANGELOG.md", "/Cargo.toml", "/Cargo.lock"]
 
 [lib]
 name = "ninjask"
