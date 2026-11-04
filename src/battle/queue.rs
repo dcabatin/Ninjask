@@ -484,7 +484,7 @@ impl Battle {
                     ties += 1;
                 }
             }
-            if ties > 1 {
+            if ties > 1 && !crate::approx::on(crate::approx::NO_TIE_DRAWS) {
                 self.rng.shuffle(list, sorted, sorted + ties);
             }
             sorted += ties;
