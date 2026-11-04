@@ -1,7 +1,9 @@
 name: Release
 
-# Pushing a tag vX.Y.Z publishes that version to PyPI (wheels for Linux,
-# macOS and Windows, plus the sdist) and to crates.io. Run by hand
+# Pushing a tag vX.Y.Z publishes that version to PyPI (wheels for Linux
+# glibc and musl, macOS and Windows, plus the sdist) and to crates.io. The
+# wheels use the stable ABI (abi3, Cargo feature python-module), so one wheel
+# per platform serves CPython 3.12 and every later version. Run by hand
 # (workflow_dispatch), it builds and tests everything without publishing.
 #
 # Both registries use trusted publishing, so the repository holds no tokens:
@@ -51,11 +53,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: x86_64, test: true }
-          - { os: ubuntu-latest, target: aarch64, test: false }
+          - { os: ubuntu-latest, target: x86_64, manylinux: auto, test: true }
+          - { os: ubuntu-latest, target: aarch64, manylinux: auto, test: false }
+          - { os: ubuntu-latest, target: x86_64, manylinux: musllinux_1_2, test: false }
+          - { os: ubuntu-latest, target: aarch64, manylinux: musllinux_1_2, test: false }
           - { os: macos-latest, target: aarch64, test: true }
           - { os: macos-latest, target: x86_64, test: false }
           - { os: windows-latest, target: x64, test: true }
+          - { os: windows-11-arm, target: aarch64, test: true }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -63,30 +68,37 @@ jobs:
         with:
           name: package-data
           path: python/ninjask/data
+      # The newest first, so the oldest is the default python for maturin.
       - uses: actions/setup-python@v5
+        id: newest
         with:
-          python-version: |
-            3.12
-            3.13
+          python-version: "3.14"
+      - uses: actions/setup-python@v5
+        id: oldest
+        with:
+          python-version: "3.12"
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          # The Pythons the pinned PyO3 supports (a newer one on the runner
-          # fails its version check)
-          args: --release --out dist --interpreter 3.12 3.13
-          manylinux: auto
-      - name: The wheel works outside the checkout, on the bundled data
+          # One abi3 wheel, built against the oldest supported Python
+          args: --release --out dist --interpreter 3.12
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+      - name: The wheel works outside the checkout, on the oldest and newest Python
         if: matrix.test
         shell: bash
         run: |
-          python -m venv "$RUNNER_TEMP/venv"
-          py="$RUNNER_TEMP/venv/bin/python"; [ -x "$py" ] || py="$RUNNER_TEMP/venv/Scripts/python.exe"
-          "$py" -m pip install --find-links dist ninjask
-          cd "$RUNNER_TEMP"
-          "$py" -c "import ninjask; from ninjask.policy import RandomPolicy; t = ninjask.verification_teams(); print(ninjask.play_engine_game('gen9championsvgc2026regmc', 1, t[0], t[1], RandomPolicy(1), RandomPolicy(2)))"
+          i=0
+          for base in "${{ steps.oldest.outputs.python-path }}" "${{ steps.newest.outputs.python-path }}"; do
+            i=$((i + 1))
+            "$base" -m venv "$RUNNER_TEMP/venv$i"
+            py="$RUNNER_TEMP/venv$i/bin/python"; [ -x "$py" ] || py="$RUNNER_TEMP/venv$i/Scripts/python.exe"
+            "$py" --version
+            "$py" -m pip install --only-binary ninjask --find-links dist ninjask
+            (cd "$RUNNER_TEMP" && "$py" -c "import ninjask; from ninjask.policy import RandomPolicy; t = ninjask.verification_teams(); print(ninjask.play_engine_game('gen9championsvgc2026regmc', 1, t[0], t[1], RandomPolicy(1), RandomPolicy(2)))")
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.manylinux || 'native' }}
           path: dist
 
   sdist:
