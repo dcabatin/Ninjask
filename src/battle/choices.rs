@@ -858,65 +858,122 @@ impl Battle {
     /// (`team_preview_choices` in `python/ninjask/choices.py`). Empty outside
     /// team preview or once the side has picked.
     pub fn team_preview_orders(&self, s: usize) -> Vec<Vec<usize>> {
+        let mut out = Vec::new();
+        self.for_each_team_preview_order(s, &mut |o| out.push(o.to_vec()));
+        out
+    }
+
+    /// Each order `team_preview_orders(s)` lists, in its order, handed to
+    /// `f` without building the list.
+    pub fn for_each_team_preview_order(&self, s: usize, f: &mut impl FnMut(&[usize])) {
         if self.request != RequestState::TeamPreview || !self.side_needs_choice(s) {
-            return Vec::new();
+            return;
         }
         let n = self.sides[s].mons.len();
         let bring = self.dex.format.picked_team_size.unwrap_or(n).min(n);
-        let mut out = Vec::new();
-        for picked in combinations(n, bring) {
-            for leads in combinations(picked.len(), bring.min(2)) {
-                let lead: Vec<usize> = leads.iter().map(|&i| picked[i]).collect();
-                let rest = picked.iter().copied().filter(|p| !lead.contains(p));
-                out.push(lead.iter().copied().chain(rest).collect());
-            }
-        }
-        out
+        let lead = bring.min(2);
+        // Teams have at most six Pokémon (TEAM_MAX).
+        let mut picked = [0usize; TEAM_MAX];
+        let mut order = [0usize; TEAM_MAX];
+        let mut leads = [0usize; 2];
+        for_each_subset(n, bring, &mut picked, 0, 0, &mut |picked| {
+            for_each_subset(picked.len(), lead, &mut leads, 0, 0, &mut |leads| {
+                let mut k = 0;
+                for &l in leads {
+                    order[k] = picked[l];
+                    k += 1;
+                }
+                for (j, &p) in picked.iter().enumerate() {
+                    if !leads.contains(&j) {
+                        order[k] = p;
+                        k += 1;
+                    }
+                }
+                f(&order[..k]);
+            });
+        });
     }
 
     /// Joint choices from each slot's options: Showdown refuses two
     /// switches to one Pokémon and two Mega Evolutions, and a forced switch
     /// must fill as many slots as it can.
     fn combine_slot_options(&self, per_slot: Vec<Vec<SlotChoice>>) -> Vec<Vec<SlotChoice>> {
-        let n = per_slot.len();
-        let mut combos: Vec<(usize, Vec<SlotChoice>)> = Vec::new();
-        let mut current = Vec::with_capacity(n);
-        fn rec(
-            per_slot: &[Vec<SlotChoice>],
-            depth: usize,
-            current: &mut Vec<SlotChoice>,
-            out: &mut Vec<(usize, Vec<SlotChoice>)>,
-        ) {
-            if depth == per_slot.len() {
-                let mut switches = Vec::new();
-                let mut megas = 0;
-                for c in current.iter() {
-                    match c {
-                        SlotChoice::Switch { index } => switches.push(*index),
-                        SlotChoice::Move { mega: true, .. } => megas += 1,
-                        _ => {}
+        let mut out = Vec::new();
+        self.for_each_combination(&per_slot, &mut |c| out.push(c.to_vec()));
+        out
+    }
+
+    /// Each joint choice `player_choices(s)` lists, in its order, handed to
+    /// `f` without building the list (no allocation per choice).
+    pub fn for_each_player_choice(&self, s: usize, f: &mut impl FnMut(&[SlotChoice])) {
+        if !matches!(self.request, RequestState::Move | RequestState::Switch)
+            || !self.side_needs_choice(s)
+        {
+            return;
+        }
+        let n = self.sides[s].n_active;
+        let per_slot: ArrayVec<Vec<SlotChoice>, MAX_ACTIVE_PER_SIDE> = (0..n)
+            .map(|slot| self.player_slot_options(s, slot))
+            .collect();
+        self.for_each_combination(&per_slot, f);
+    }
+
+    /// The joint choices of each slot's options in product order, keeping
+    /// those Showdown accepts (no two switches to one Pokémon, at most one
+    /// Mega Evolution; a forced switch fills as many slots as it can).
+    fn for_each_combination(
+        &self,
+        per_slot: &[Vec<SlotChoice>],
+        f: &mut impl FnMut(&[SlotChoice]),
+    ) {
+        type Joint = ArrayVec<SlotChoice, MAX_ACTIVE_PER_SIDE>;
+        /// The number of switches of an acceptable joint choice.
+        fn switches(c: &[SlotChoice]) -> Option<usize> {
+            let mut to: ArrayVec<usize, MAX_ACTIVE_PER_SIDE> = ArrayVec::new();
+            let mut megas = 0;
+            for x in c {
+                match *x {
+                    SlotChoice::Switch { index } => {
+                        if to.contains(&index) {
+                            return None;
+                        }
+                        to.push(index);
                     }
+                    SlotChoice::Move { mega: true, .. } => megas += 1,
+                    _ => {}
                 }
-                let mut sorted = switches.clone();
-                sorted.sort_unstable();
-                sorted.dedup();
-                if sorted.len() == switches.len() && megas <= 1 {
-                    out.push((switches.len(), current.clone()));
-                }
-                return;
             }
-            for c in &per_slot[depth] {
-                current.push(*c);
-                rec(per_slot, depth + 1, current, out);
-                current.pop();
+            (megas <= 1).then_some(to.len())
+        }
+        fn rec(per_slot: &[Vec<SlotChoice>], cur: &mut Joint, f: &mut dyn FnMut(&[SlotChoice])) {
+            let Some((first, rest)) = per_slot.split_first() else {
+                return f(cur);
+            };
+            for c in first {
+                cur.push(*c);
+                rec(rest, cur, f);
+                cur.pop();
             }
         }
-        rec(&per_slot, 0, &mut current, &mut combos);
-        if self.request == RequestState::Switch && !combos.is_empty() {
-            let most = combos.iter().map(|(k, _)| *k).max().unwrap();
-            combos.retain(|(k, _)| *k == most);
-        }
-        combos.into_iter().map(|(_, c)| c).collect()
+        let mut cur = Joint::new();
+        let most = if self.request == RequestState::Switch {
+            let mut most = None;
+            rec(per_slot, &mut cur, &mut |c| {
+                if let Some(k) = switches(c) {
+                    most = Some(most.map_or(k, |m: usize| m.max(k)));
+                }
+            });
+            most
+        } else {
+            None
+        };
+        rec(per_slot, &mut cur, &mut |c| {
+            if let Some(k) = switches(c) {
+                if most.is_none_or(|m| k == m) {
+                    f(c);
+                }
+            }
+        });
     }
 
     /// A random legal joint choice, drawing each slot's option uniformly and
@@ -1022,22 +1079,26 @@ impl Battle {
     }
 }
 
-/// Every increasing `k`-subset of `0..n`, in lexicographic order.
-fn combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
-    fn go(start: usize, n: usize, k: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-        if cur.len() == k {
-            out.push(cur.clone());
-            return;
-        }
-        for i in start..n {
-            cur.push(i);
-            go(i + 1, n, k, cur, out);
-            cur.pop();
-        }
+/// Most Pokémon on a team.
+const TEAM_MAX: usize = 6;
+
+/// Every increasing `k`-subset of `0..n`, in lexicographic order, written
+/// into `buf[..k]` and handed to `f` (no allocation).
+fn for_each_subset(
+    n: usize,
+    k: usize,
+    buf: &mut [usize],
+    depth: usize,
+    start: usize,
+    f: &mut dyn FnMut(&[usize]),
+) {
+    if depth == k {
+        return f(&buf[..k]);
     }
-    let mut out = Vec::new();
-    go(0, n, k, &mut Vec::with_capacity(k), &mut out);
-    out
+    for i in start..n {
+        buf[depth] = i;
+        for_each_subset(n, k, buf, depth + 1, i + 1, f);
+    }
 }
 
 /// How many options of one slot `sample_joint_choice` keeps on the stack:
