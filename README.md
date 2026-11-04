@@ -107,8 +107,9 @@ print("\n".join(b.log("p1", 0)[:10]))                           # p1's view of t
 touching `b`. `b.damage("p1a", move_id, "p2b")` runs the damage calculation
 (all 16 rolls, crit chance, KO chances) for the Pokémon in those slots.
 
-`Battle.reference(d, team1, team2, "1,2,3,4")` runs a battle in reference
-mode, seeded like Showdown, so it reproduces a Showdown game draw for draw.
+`Battle.reference(d, team1, team2, "sodium," + "0" * 64)` runs a battle in
+reference mode, seeded like Showdown (a `sodium,<hex>` seed string), so it
+reproduces a Showdown game draw for draw.
 
 ### Rust
 
