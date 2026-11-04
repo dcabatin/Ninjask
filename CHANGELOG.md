@@ -7,6 +7,8 @@
 - pyo3 0.25 → 0.30, which fixes RUSTSEC-2026-0176 and RUSTSEC-2026-0177
   (Ninjask called neither affected API). A crate that embeds Ninjask's
   classes (feature `python`) must build against pyo3 0.30 too.
+- `scripts/verify_engine.py` checks Reg M-C by default (it checked the
+  Champions doubles custom game); `--format` still picks another.
 
 ### Fixed
 

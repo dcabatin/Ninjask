@@ -18,7 +18,7 @@ from ninjask.verify import verify
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--format", default="gen9championsdoublescustomgame")
+    p.add_argument("--format", default="gen9championsvgc2026regmc", help="format id (gen9championsdoublescustomgame plays all six, no team preview)")
     p.add_argument("--cases", type=int, default=50)
     p.add_argument("--n", type=int, default=200, help="outcomes drawn per case from each simulator")
     p.add_argument("--seed", type=int, default=0)
