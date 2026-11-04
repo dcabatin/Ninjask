@@ -41,7 +41,8 @@ class Battle:
     def rng_seed(self) -> str | None:
         """The RNG state as Showdown prints it (reference mode), else None."""
     def request(self, side: str) -> str | None:
-        """The side's current request as Showdown JSON text, or None."""
+        """The side's current request as Showdown JSON text, or None when the
+        side has no request (it is not its turn to choose; see `needs_choice`)."""
     def needs_choice(self, side: str) -> bool: ...
     def choose(self, side: str, choice: str) -> None:
         """Submit a choice; raises ValueError with Showdown's message if invalid."""
@@ -65,7 +66,9 @@ class Battle:
     def ended(self) -> bool: ...
     @property
     def winner(self) -> str | None:
-        """The winning player's name, or None."""
+        """The winning player's name (as Showdown's `battle.winner`), or None.
+
+        `winner_side` gives the side, "p1" or "p2", as `play_engine_game` does."""
     @property
     def winner_side(self) -> str | None:
         """The winning side ("p1" or "p2"), or None for a tie or a battle still running."""
