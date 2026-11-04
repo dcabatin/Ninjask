@@ -245,9 +245,9 @@ harness on a few games.
   `mypy --strict`; the helper modules (`verify`, `play`, ...) are not
   checked with `--strict`.
 
-**Stability before 1.0.** A patch release (0.2.x) keeps the public Rust
+**Stability before 1.0.** A patch release (0.3.x) keeps the public Rust
 and Python API and changes behaviour only to match the pinned Showdown more
-closely; every such change is in the CHANGELOG. A minor release (0.3) may
+closely; every such change is in the CHANGELOG. A minor release (0.4) may
 change the API or move the Showdown pin, and the CHANGELOG says what to
 update.
 
