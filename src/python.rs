@@ -21,76 +21,38 @@ use crate::battle::Battle;
 use crate::dex::support;
 use crate::dex::Dex;
 
-/// Every increasing `k`-subset of `0..n`, in lexicographic order.
-fn combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
-    let mut out = Vec::new();
-    let mut cur = Vec::with_capacity(k);
-    fn go(start: usize, n: usize, k: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-        if cur.len() == k {
-            out.push(cur.clone());
-            return;
-        }
-        for i in start..n {
-            cur.push(i);
-            go(i + 1, n, k, cur, out);
-            cur.pop();
-        }
-    }
-    go(0, n, k, &mut cur, &mut out);
-    out
+/// "team 1234" for team positions (0-based) in the order sent.
+fn team_string(order: &[usize]) -> String {
+    let picks: String = order.iter().map(|p| (p + 1).to_string()).collect();
+    format!("team {picks}")
 }
 
-/// Values per Pokémon in `Tracker.encode`.
-pub const ENCODE_MON: usize = 4 + 7 + 7 + 1;
-/// Length of `Tracker.encode`: two sides of six Pokémon and six side
-/// conditions, then weather (4), terrain (4), Trick Room and Gravity.
-pub const ENCODE_LEN: usize = 2 * (6 * ENCODE_MON + 6) + 4 + 4 + 2;
-
-fn encode_view(t: &crate::tracker::Tracker) -> Vec<f32> {
-    use crate::dex::types::Status;
-    use crate::state::SideCond;
-    let mut v = Vec::with_capacity(ENCODE_LEN);
-    for side in [t.me, 1 - t.me] {
-        let sv = &t.sides[side];
-        for i in 0..6 {
-            match sv.mons.get(i) {
-                Some(m) => {
-                    v.push(if m.maxhp > 0 {
-                        m.hp as f32 / m.maxhp as f32
-                    } else {
-                        0.0
-                    });
-                    v.push(m.fainted as u8 as f32);
-                    v.push(m.seen as u8 as f32);
-                    v.push(m.slot.is_some() as u8 as f32);
-                    let st = match m.status {
-                        Status::None | Status::Fnt => 0,
-                        Status::Brn => 1,
-                        Status::Par => 2,
-                        Status::Psn => 3,
-                        Status::Tox => 4,
-                        Status::Slp => 5,
-                        Status::Frz => 6,
-                    };
-                    v.extend((0..7).map(|k| (k == st) as u8 as f32));
-                    v.extend(m.boosts.iter().map(|&b| b as f32 / 6.0));
-                    v.push(m.mega as u8 as f32);
-                }
-                None => v.extend(std::iter::repeat_n(0.0, ENCODE_MON)),
-            }
-        }
-        for c in SideCond::ALL {
-            v.push(sv.conditions.iter().any(|(k, _)| *k == c) as u8 as f32);
-        }
+/// The `index`-th of the side's legal choices, as Showdown syntax.
+fn indexed_choice(b: &Battle, s: usize, index: usize) -> PyResult<String> {
+    let out_of_range =
+        |n: usize| PyValueError::new_err(format!("choice {index} out of range: {n} legal choices"));
+    if b.request == crate::state::RequestState::TeamPreview {
+        let orders = b.team_preview_orders(s);
+        return orders
+            .get(index)
+            .map(|o| team_string(o))
+            .ok_or_else(|| out_of_range(orders.len()));
     }
-    let weather = t.field.weather.map(|(w, _)| w as usize);
-    v.extend((0..4).map(|k| (weather == Some(k)) as u8 as f32));
-    let terrain = t.field.terrain.map(|(x, _)| x as usize);
-    v.extend((0..4).map(|k| (terrain == Some(k)) as u8 as f32));
-    v.push(t.field.trick_room.is_some() as u8 as f32);
-    v.push(t.field.gravity.is_some() as u8 as f32);
-    debug_assert_eq!(v.len(), ENCODE_LEN);
-    v
+    let choices = b.player_choices(s);
+    choices
+        .get(index)
+        .map(|c| b.choice_string(c))
+        .ok_or_else(|| out_of_range(choices.len()))
+}
+
+/// Little-endian bytes of a numeric buffer, for `numpy.frombuffer`.
+fn le_bytes<'py, const N: usize, T: Copy>(
+    py: Python<'py>,
+    v: &[T],
+    to: impl Fn(T) -> [u8; N],
+) -> Bound<'py, pyo3::types::PyBytes> {
+    let raw: Vec<u8> = v.iter().flat_map(|&x| to(x)).collect();
+    pyo3::types::PyBytes::new(py, &raw)
 }
 
 /// "p1" or "p2" as a side index.
@@ -143,6 +105,20 @@ impl PyDex {
     /// Ids of all species in this format's data.
     fn species_ids(&self) -> Vec<String> {
         self.inner.species.iter().map(|s| s.id.clone()).collect()
+    }
+
+    /// Embedding-table sizes for `Tracker.encode_ids()`: one more than the
+    /// dex's count (0 is unknown), two more for items (1 is known to hold
+    /// nothing). Index `k - 1` of `species_ids()` (or `move_ids()`) is the
+    /// entity behind value `k`.
+    fn vocab(&self) -> std::collections::HashMap<&'static str, usize> {
+        let d = &self.inner;
+        std::collections::HashMap::from([
+            ("species", d.species.len() + 1),
+            ("items", d.items.len() + 2),
+            ("abilities", d.abilities.len() + 1),
+            ("moves", d.moves.len() + 1),
+        ])
     }
 
     /// Ids of all moves in this format's data, in dex order.
@@ -299,45 +275,84 @@ impl PyBattle {
             .map_err(PyValueError::new_err)
     }
 
-    /// The side's legal choices in Showdown's choice syntax, listed by the
-    /// engine: every ordered pick at team preview (the first two lead),
-    /// else every joint move or switch choice, ally targets included. Empty
-    /// when the side has no request.
-    ///
-    /// Research prototype (research/README.md): the engine lists what is
-    /// truly legal, so where the request only says `maybeDisabled` (a foe's
-    /// Imprison the player hasn't seen) it leaves out a move the player
-    /// would still try. That reveals hidden information in about 0.4% of
-    /// decisions; a released version should list choices from the request's
-    /// view instead.
+    /// The side's legal choices in Showdown's choice syntax, as its request
+    /// offers them: every ordered pick at team preview (the first two lead),
+    /// else every joint move or switch choice, ally targets included. The
+    /// same choices as `ninjask.choices` lists from the request, in the same
+    /// order, built without it: they depend only on what the player can
+    /// see, so one can still be refused (a hidden disable or trap), as in
+    /// Showdown. Empty when the side has nothing to choose.
     fn legal_choices(&self, side: &str) -> PyResult<Vec<String>> {
         let s = side_index(side)?;
         let b = &self.inner;
-        if !b.side_needs_choice(s) {
-            return Ok(Vec::new());
-        }
         if b.request == crate::state::RequestState::TeamPreview {
-            let n = b.sides[s].mons.len();
-            let bring = b.dex.format.picked_team_size.unwrap_or(n).min(n);
-            let mut out = Vec::new();
-            for picked in combinations(n, bring) {
-                for leads in combinations(picked.len(), bring.min(2)) {
-                    let lead: Vec<usize> = leads.iter().map(|&i| picked[i]).collect();
-                    let rest = picked.iter().filter(|p| !lead.contains(p));
-                    let order: String = lead
-                        .iter()
-                        .chain(rest)
-                        .map(|p| (p + 1).to_string())
-                        .collect();
-                    out.push(format!("team {order}"));
-                }
-            }
-            return Ok(out);
+            return Ok(b
+                .team_preview_orders(s)
+                .iter()
+                .map(|o| team_string(o))
+                .collect());
         }
-        Ok(b.joint_choices(s)
+        Ok(b.player_choices(s)
             .iter()
             .map(|c| b.choice_string(c))
             .collect())
+    }
+
+    /// `legal_choices` as numbers, `action_width(side)` int8 values per
+    /// choice, little-endian bytes for `numpy.frombuffer(..., numpy.int8)`.
+    /// Move and switch requests: for each active slot, kind (0 pass, 1 move,
+    /// 2 switch, 3 Struggle or recharge), index (move slot 1-4 or team
+    /// position 1-6), target (1, 2 foes; -1, -2 allies; 0 none), Mega
+    /// Evolution (`ninjask.ACTION_FIELDS` values). Team preview: the team
+    /// positions sent, 1-based, leads first.
+    fn legal_actions<'py>(
+        &self,
+        py: Python<'py>,
+        side: &str,
+    ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        let s = side_index(side)?;
+        let b = &self.inner;
+        let mut out: Vec<i8> = Vec::new();
+        if b.request == crate::state::RequestState::TeamPreview {
+            for o in b.team_preview_orders(s) {
+                out.extend(o.iter().map(|&p| p as i8 + 1));
+            }
+        } else {
+            for c in b.player_choices(s) {
+                crate::encode::action_row(&c, &mut out);
+            }
+        }
+        Ok(le_bytes(py, &out, |x: i8| x.to_le_bytes()))
+    }
+
+    /// Values per choice in `legal_actions(side)`: the number of Pokémon
+    /// brought at team preview, else `ninjask.ACTION_FIELDS` per active
+    /// slot; 0 when the side has nothing to choose.
+    fn action_width(&self, side: &str) -> PyResult<usize> {
+        let s = side_index(side)?;
+        let b = &self.inner;
+        if !b.side_needs_choice(s) {
+            return Ok(0);
+        }
+        Ok(match b.request {
+            crate::state::RequestState::TeamPreview => {
+                let n = b.sides[s].mons.len();
+                b.dex.format.picked_team_size.unwrap_or(n).min(n)
+            }
+            crate::state::RequestState::Move | crate::state::RequestState::Switch => {
+                b.sides[s].n_active * crate::encode::ACTION_FIELDS
+            }
+            crate::state::RequestState::Ended => 0,
+        })
+    }
+
+    /// Submit `legal_choices(side)[index]` without formatting the list.
+    /// Raises ValueError as `choose` does: when Showdown refuses the choice
+    /// (something hidden), or for an index out of range.
+    fn choose_index(&mut self, side: &str, index: usize) -> PyResult<()> {
+        let s = side_index(side)?;
+        let choice = indexed_choice(&self.inner, s, index)?;
+        self.inner.choose(s, &choice).map_err(PyValueError::new_err)
     }
 
     fn log(&self, viewer: &str, start: usize) -> Vec<String> {
@@ -532,14 +547,24 @@ impl PyTracker {
         self.inner.to_json().to_string()
     }
 
-    /// The view as a fixed-length list of floats, for a model: the player's
-    /// own side, then the foe's, then the field. Each side has six Pokémon
-    /// slots of `ENCODE_MON` values (HP fraction, fainted, seen, active,
-    /// status one-hot, boost stages / 6, Mega Evolved), then its side
-    /// conditions; the field is weather, terrain, Trick Room and Gravity.
+    /// The view as `ninjask.OBS_LEN` float32 values, little-endian bytes for
+    /// `numpy.frombuffer(..., numpy.float32)`: the player's own side, then
+    /// the foe's, then the field (layout: `ninjask::encode::observation`).
     /// Only what the view holds is encoded, so nothing hidden leaks.
-    fn encode(&self) -> Vec<f32> {
-        encode_view(&self.inner)
+    fn encode<'py>(&self, py: Python<'py>) -> Bound<'py, pyo3::types::PyBytes> {
+        let mut v = Vec::with_capacity(crate::encode::OBS_LEN);
+        crate::encode::observation(&self.inner, &mut v);
+        le_bytes(py, &v, |x: f32| x.to_le_bytes())
+    }
+
+    /// The view's categorical part as `ninjask.IDS_LEN` int16 values
+    /// (`numpy.frombuffer(..., numpy.int16)`): per Pokémon its species,
+    /// item, ability and four moves, 0 when unknown (layout:
+    /// `ninjask::encode::ids`; table sizes: `Dex.vocab()`).
+    fn encode_ids<'py>(&self, py: Python<'py>) -> Bound<'py, pyo3::types::PyBytes> {
+        let mut v = Vec::with_capacity(crate::encode::IDS_LEN);
+        crate::encode::ids(&self.inner, &mut v);
+        le_bytes(py, &v, |x: i16| x.to_le_bytes())
     }
 
     /// A world: the battle this view describes, with `assumptions` (JSON,
@@ -568,6 +593,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDex>()?;
     m.add_class::<PyBattle>()?;
     m.add_class::<PyTracker>()?;
+    m.add("OBS_LEN", crate::encode::OBS_LEN)?;
+    m.add("IDS_LEN", crate::encode::IDS_LEN)?;
+    m.add("ACTION_FIELDS", crate::encode::ACTION_FIELDS)?;
     #[cfg(feature = "approx")]
     m.add_function(wrap_pyfunction!(set_approx, m)?)?;
     Ok(())

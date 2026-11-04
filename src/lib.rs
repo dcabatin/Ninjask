@@ -50,6 +50,7 @@ pub mod boosts;
 pub mod calc;
 pub mod conditions;
 pub mod dex;
+pub mod encode;
 pub mod events;
 pub mod items;
 pub mod kinds;
