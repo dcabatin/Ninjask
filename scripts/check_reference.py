@@ -24,6 +24,7 @@ import multiprocessing
 import multiprocessing.util
 import random
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -256,6 +257,8 @@ def main() -> None:
     print(dict(counts))
     for k, n in kinds.most_common():
         print(f"{n:4d}  {k}  (games {games_of[k][:5]})")
+    # Fail the run (and CI) when any game diverged.
+    sys.exit(1 if counts["diverged"] else 0)
 
 
 if __name__ == "__main__":
