@@ -7,6 +7,12 @@
 - Add Rust and Python outcome enumeration for search and regret minimization,
   with exhaustive chance probabilities or a damage-endpoint approximation,
   and hashable full battle-state keys.
+  (dcabatin/Ninjask#8, by CalebBrody.) Each call explores at most
+  `max_paths` chance paths (`DEFAULT_MAX_PATHS`, 20,000, about 0.7 s) and
+  raises an error beyond that instead of running for minutes: on 40
+  mid-game states of real teams, Precise fit the default budget on 14 and
+  AlmostPrecise on 22 (`examples/validate_outcomes.rs`). Where it finished
+  it was exact against 28,000 sampled resolutions.
 - **A native interface for training**, with no JSON and no strings in the
   loop:
   - `Battle.legal_choices(side)` lists the choices the side's request

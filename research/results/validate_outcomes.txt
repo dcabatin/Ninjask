@@ -1,0 +1,50 @@
+state turn outcomes_precise ms_precise outcomes_almost ms_almost ms_2000_samples sampled_outside_support tv tv_noise_p99 faint_tv_almost_vs_precise
+0 8 2 0.90 2 0.21 48.3 0 0.0022 0.0128 0.0000
+1 4 over 664 32 62.23 - - - - - us_per_path 33.2
+2 3 4 222.00 4 29.65 69.6 0 0.0070 0.0330 0.0000
+3 4 over 604 32 76.26 - - - - - us_per_path 30.2
+4 9 over 665 over 578.59 - - - - - us_per_path 33.3
+5 6 over 702 120 286.07 - - - - - us_per_path 35.1
+6 2 2 0.12 2 0.16 45.5 0 0.0113 0.0257 0.0000
+7 4 over 612 over 592.62 - - - - - us_per_path 30.6
+8 4 1 0.14 1 0.16 48.6 0 0.0000 0.0000 0.0000
+9 2 over 685 over 627.00 - - - - - us_per_path 34.2
+10 2 2 285.77 2 44.39 60.6 0 0.0012 0.0122 0.0000
+11 7 2 0.12 2 0.15 49.6 0 0.0002 0.0258 0.0000
+12 3 over 556 over 735.68 - - - - - us_per_path 27.8
+13 8 over 613 over 617.03 - - - - - us_per_path 30.6
+14 6 over 614 over 600.23 - - - - - us_per_path 30.7
+15 7 over 821 over 714.00 - - - - - us_per_path 41.0
+16 8 2 1.15 2 0.22 59.2 0 0.0027 0.0127 0.0000
+17 8 over 719 over 750.95 - - - - - us_per_path 35.9
+18 1 over 651 over 589.82 - - - - - us_per_path 32.5
+19 3 44 89.15 7 11.18 46.0 0 0.0330 0.0550 0.0182
+20 4 over 544 12 91.46 - - - - - us_per_path 27.2
+21 2 over 666 over 721.20 - - - - - us_per_path 33.3
+22 5 21 71.12 4 1.61 119.4 0 0.0263 0.0472 0.0000
+23 2 17 3.13 4 0.58 121.8 0 0.0300 0.0408 0.0000
+24 3 1 0.44 1 0.65 51.9 0 0.0000 0.0000 0.0000
+25 5 2 0.87 2 0.21 50.5 0 0.0042 0.0108 0.0000
+26 7 over 701 32 46.68 - - - - - us_per_path 35.1
+27 2 over 637 over 856.48 - - - - - us_per_path 31.8
+28 7 over 599 over 578.87 - - - - - us_per_path 29.9
+29 4 over 608 over 864.80 - - - - - us_per_path 30.4
+30 3 1 14.91 1 16.69 55.2 0 0.0000 0.0000 0.0000
+31 6 over 704 8 320.00 - - - - - us_per_path 35.2
+32 1 over 685 over 664.96 - - - - - us_per_path 34.3
+33 4 over 597 over 691.85 - - - - - us_per_path 29.8
+34 8 21 1.50 4 0.30 54.5 0 0.0393 0.0459 0.0000
+35 1 over 603 32 47.01 - - - - - us_per_path 30.2
+36 2 over 711 over 568.27 - - - - - us_per_path 35.5
+37 2 over 611 over 665.87 - - - - - us_per_path 30.5
+38 6 over 840 over 778.98 - - - - - us_per_path 42.0
+39 4 over 870 32 114.58 - - - - - us_per_path 43.5
+
+== 40 states, 2000 sampled resolutions each, max_paths 20000
+Precise over the budget: 26 of 40
+sampled outcomes outside the enumerated support: 0 of 28000
+states whose sampled distribution is farther from the enumeration than the noise 99th percentile: 0 of 14 (expected about 0.1)
+Precise: ms per enumeration median 1.50, p90 222.00, max 285.77; outcomes median 2, p90 21, max 44
+AlmostPrecise (all 40 states): ms median 286.07, p90 750.95, max 864.80; over the budget 18
+2000 sampled resolutions: median 54.5 ms
+AlmostPrecise vs Precise, TV of who-faints: median 0.0000, p90 0.0000, max 0.0182

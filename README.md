@@ -488,6 +488,83 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
   `NINJASK_SHOWDOWN` and `NINJASK_DATA`. `NINJASK_POOL` sets the default team
   pool of the checks.
 
+## Enumerating chance outcomes
+
+`Battle::enumerate_outcomes(&choice_p1, &choice_p2, mode)` accepts the existing
+structured side choices (`&[SlotChoice]`) and returns
+`Result<Vec<Outcome>, EnumerationError>`. Each outcome contains `probability`
+(`f64`) and a cloned `battle`. Python uses the existing choice-string syntax:
+
+```python
+import ninjask
+from ninjask import EnumerationMode
+
+d = ninjask.dex("gen9championsvgc2026regmc")
+team1, team2 = ninjask.verification_teams()[:2]
+battle = ninjask.Battle(d, team1, team2, seed=1)
+battle.choose("p1", "team 1234")
+battle.choose("p2", "team 1234")
+# p1: Protect and Psychic Terrain; p2: Protect, and Throat Chop at p1's second Pokémon
+outcomes = battle.enumerate_outcomes("move 4, move 1", "move 4, move 3 2", EnumerationMode.Precise)
+print(len(outcomes), round(sum(o.probability for o in outcomes), 9))  # 21 distinct outcomes, total 1.0
+try:
+    battle.enumerate_outcomes(battle.legal_choices("p1")[0], battle.legal_choices("p2")[0])
+except ValueError as e:  # more chance paths than max_paths: raise it, use AlmostPrecise or sample
+    print(e)
+```
+
+An expected value over the outcomes is then
+`sum(o.probability * evaluate(o.battle) for o in outcomes)`.
+
+Enumeration preserves the input and any already-submitted choices. Supply an
+empty choice (`&[]` in Rust, `""` in Python) for a side that does not need one.
+Execution stops at the next player decision request or battle end, including
+mid-turn pivot/replacement requests; the returned battles preserve the remaining
+queue. Team preview is not supported by this API. Invalid choices return an
+error (`ValueError` in Python).
+
+`Precise` exhaustively enumerates the integer outcomes of the existing 32-bit
+scaling rule, accumulating probabilities in floating point. `AlmostPrecise`
+enumerates only the minimum and maximum damage-variance rolls, each with weight
+1/2, including confusion damage and each hit of a multi-hit move. All other
+chance events remain exhaustive. These endpoint weights approximate the damage
+distribution; they are not the actual probability of rolling either endpoint.
+
+Execution replays explicit decision paths on fresh clones and never calls a
+PRNG. Equivalent completed states are merged and their weights summed. There
+is no sampling, pruning or silent truncation, but the number of paths grows
+with every hit (accuracy, critical hit, damage roll), so each call explores at
+most `max_paths` of them (`ninjask::DEFAULT_MAX_PATHS`, 20,000, about 0.7 s
+at 33 µs a path) and fails with an error (`ValueError`) beyond that; the
+`_within` variants in Rust and `max_paths=` in Python set another budget. On
+40 mid-game states of real teams with random choices
+(`examples/validate_outcomes.rs`), Precise fit the default budget on 14 and
+AlmostPrecise on 22: endgames and turns with few attacks fit, others need a
+larger budget or sampling. Where it finished, the enumeration was exact: none
+of 28,000 sampled resolutions of those turns fell outside it, and none of the
+turns' sampled distributions differed from it beyond sampling noise.
+Returned battles retain the input RNG snapshot for subsequent ordinary play
+(enumeration itself is independent of it), so reseed an outcome
+(`Battle.reseed`) before sampling forward from several of them, or they draw
+the same numbers.
+
+`battle.state_key()` creates an immutable, hashable `BattleStateKey` containing
+full future-relevant simulator state, including pending choices and queued
+actions. Keys exclude logs, RNG state and diagnostics, and are scoped to the
+same shared Dex allocation (independently loaded dexes stay distinct). Merged
+outcomes retain the first representative battle's logs and diagnostics, not a
+history of every contributing path. These keys are not player information-set
+keys for imperfect-information training. Python `Outcome.battle` returns an
+independent copy, so modifying it cannot change the stored outcome.
+
+
+Compare enumeration modes with `cargo run --release --example bench_outcomes`.
+It uses the self-contained enumeration test fixture: no damage, one hit, a
+two-hit move, and both players attacking. Setup is excluded, logging is off,
+and timings are medians of seven alternating batches. Output includes merged
+state counts. These synthetic singles scenarios isolate damage branching;
+measure your training positions separately before projecting throughput.
+
 ## Repository layout
 
 ```
@@ -573,57 +650,3 @@ Company, nor by Pokémon Showdown. Pokémon and Pokémon character names are
 trademarks of their respective owners, used here only to identify the game
 mechanics the engine simulates. No official artwork, sprites, sounds or other
 game assets are included.
-
-
-## Enumerating chance outcomes
-
-`Battle::enumerate_outcomes(&choice_p1, &choice_p2, mode)` accepts the existing
-structured side choices (`&[SlotChoice]`) and returns
-`Result<Vec<Outcome>, EnumerationError>`. Each outcome contains `probability`
-(`f64`) and a cloned `battle`. Python uses the existing choice-string syntax:
-
-```python
-from ninjask import EnumerationMode
-
-outcomes = battle.enumerate_outcomes(
-    "move 1 1, move 2 2", "move 1 1, move 1 2", EnumerationMode.Precise
-)
-expected_value = sum(o.probability * evaluate(o.battle) for o in outcomes)
-```
-
-Enumeration preserves the input and any already-submitted choices. Supply an
-empty choice (`&[]` in Rust, `""` in Python) for a side that does not need one.
-Execution stops at the next player decision request or battle end, including
-mid-turn pivot/replacement requests; the returned battles preserve the remaining
-queue. Team preview is not supported by this API. Invalid choices return an
-error (`ValueError` in Python).
-
-`Precise` exhaustively enumerates the integer outcomes of the existing 32-bit
-scaling rule, accumulating probabilities in floating point. `AlmostPrecise`
-enumerates only the minimum and maximum damage-variance rolls, each with weight
-1/2, including confusion damage and each hit of a multi-hit move. All other
-chance events remain exhaustive. These endpoint weights approximate the damage
-distribution; they are not the actual probability of rolling either endpoint.
-
-Execution replays explicit decision paths on fresh clones and never calls a
-PRNG. Equivalent completed states are merged and their weights summed. The
-number of paths can grow exponentially; there is no sampling, pruning or silent
-truncation. Returned battles retain the input RNG snapshot for subsequent
-ordinary play; enumeration itself is independent of that snapshot.
-
-`battle.state_key()` creates an immutable, hashable `BattleStateKey` containing
-full future-relevant simulator state, including pending choices and queued
-actions. Keys exclude logs, RNG state and diagnostics, and are scoped to the
-same shared Dex allocation (independently loaded dexes stay distinct). Merged
-outcomes retain the first representative battle's logs and diagnostics, not a
-history of every contributing path. These keys are not player information-set
-keys for imperfect-information training. Python `Outcome.battle` returns an
-independent copy, so modifying it cannot change the stored outcome.
-
-
-Compare enumeration modes with `cargo run --release --example bench_outcomes`.
-It uses the self-contained enumeration test fixture: no damage, one hit, a
-two-hit move, and both players attacking. Setup is excluded, logging is off,
-and timings are medians of seven alternating batches. Output includes merged
-state counts. These synthetic singles scenarios isolate damage branching;
-measure your training positions separately before projecting throughput.
