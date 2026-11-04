@@ -15,7 +15,7 @@ exact logs and random draws, while running far faster.
 - **Honesty about coverage.** The engine never silently simulates an effect it doesn't implement.
   - Every move, item and ability is either *generic*, fully described by its data fields, or *implemented*, with code ported from Showdown.
   - Anything else is *unsupported*. A team containing one is reported unsupported (`Dex.team_problems`), so a caller can leave it out until it's implemented.
-- **Speed.** Fast enough for search and self-play: thousands of random-policy battles per second per CPU core, against Showdown's roughly 30 (see Performance).
+- **Speed.** Fast enough for search and self-play: thousands of random-policy battles per second per CPU core, against Showdown's roughly 15 to 20 (see Performance).
 - **Interfaces.**
   - Create a battle from two packed teams and a seed.
   - Get each side's request: team preview, moves, a forced switch, or wait.
@@ -929,7 +929,7 @@ Only the real-team runs caught the Floettite bug; the deferred win showed up in 
 
 ## Performance
 
-Random legal play, one CPU core, real teams: Showdown runs about 29 games/s (250 turns/s). The engine runs about 6,000 games/s, 60,000 turns/s (the `bench` example on a pool of real tournament teams, logging off), about 200 times Showdown. That gap is why the engine exists: search and large-scale self-play need it. A shared host's speed varies between runs by 10% or more, so the steady measure is instructions per game under callgrind: about 935,000 (1,500 games, setup subtracted).
+Random legal play, one CPU core, real teams: Showdown runs about 16 games/s (150 to 175 turns/s). The engine runs about 6,000 games/s, 57,000 turns/s (the `bench` example on 704 teams from public replays, logging off), and 35,000 turns/s with logging on, about 200 times Showdown, which always logs. That gap is why the engine exists: search and large-scale self-play need it. A shared host's speed varies between runs by 10% or more, so the steady measure is instructions per game under callgrind: about 700,000 (1,500 games, setup subtracted).
 
 Profile with callgrind. With logging off, log lines are not formatted at all (`log_line!`) and Pokémon identities are not built. The benchmark's random player samples each slot's option instead of enumerating every joint choice. Run it with `./target/release/examples/bench <format.json> <teams.txt> [games]`.
 
