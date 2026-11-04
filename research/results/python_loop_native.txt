@@ -1,0 +1,14 @@
+2000 games, 51658 decisions, observations on: 4.68 s = 427 games/s, 11040 decisions/s
+  legal_choices() (Rust)              44.7%     40.5 us/call
+  choose()                            18.6%     16.8 us/call
+  observation: log + Tracker feed     17.8%     16.1 us/call
+  observation: encode() (floats)       8.9%      8.1 us/call
+  setup                                5.1%    119.3 us/call
+  other Python                         5.0%
+
+2000 games, 51658 decisions, observations off: 2.42 s = 825 games/s, 21314 decisions/s
+  legal_choices() (Rust)              70.6%     33.1 us/call
+  choose()                            18.0%      8.4 us/call
+  setup                                6.4%     77.6 us/call
+  other Python                         5.0%
+

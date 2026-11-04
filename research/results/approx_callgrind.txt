@@ -1,0 +1,6 @@
+instructions per game under callgrind (1600 minus 100 games, /1500), VGCPastes pool
+flags 0: 718585 instructions/game
+flags 1: 651180 instructions/game
+flags 2: 719659 instructions/game
+flags 4: 671329 instructions/game
+flags 7: 601916 instructions/game

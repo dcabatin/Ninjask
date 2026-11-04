@@ -1,0 +1,25 @@
+approx_frontier on pools/vgcpastes-regmc.txt, Model name: Intel(R) Xeon(R) Processor @ 2.80GHz, Wed Nov  4 18:59:55 UTC 2026
+== speed: random-policy games/s, logging off, median of 7 interleaved runs of 6000 games
+  exact            6391  [5449-6879]  x1.000
+  static_order     7002  [4521-7406]  x1.096
+  no_tie_draws     6537  [5060-6846]  x1.023
+  skip_update      6521  [4065-7479]  x1.020
+  all_three        7408  [6925-8103]  x1.159
+
+== game level: p1 win rate over 150 matchups x 400 random-policy games (independent seeds per run)
+  exact again   mean |dWR| 0.0253  max 0.1100  mean turns 9.99  (noise floor: exact vs exact)
+  static_order  mean |dWR| 0.0279  max 0.1200  mean turns 9.98  (exact 9.99)
+  no_tie_draws  mean |dWR| 0.0260  max 0.1050  mean turns 9.97  (exact 9.99)
+  skip_update   mean |dWR| 0.0308  max 0.2575  mean turns 9.82  (exact 9.99)
+  all_three     mean |dWR| 0.0325  max 0.2900  mean turns 9.83  (exact 9.99)
+
+== turn level: 400 sampled states x 400 resolutions per configuration; 63.1 distinct outcomes per state on average
+  exact again   mean TV 0.1743  (noise floor: exact vs exact; its 99th percentile 0.8500)
+  static_order  mean TV 0.1915  excess 0.0172  states above the noise 99th percentile: 12 of 400 (3.0%)
+  no_tie_draws  mean TV 0.1761  excess 0.0018  states above the noise 99th percentile: 4 of 400 (1.0%)
+  skip_update   mean TV 0.2077  excess 0.0334  states above the noise 99th percentile: 23 of 400 (5.8%)
+  all_three     mean TV 0.2259  excess 0.0516  states above the noise 99th percentile: 29 of 400 (7.2%)
+
+real	1m35.758s
+user	1m34.641s
+sys	0m0.031s

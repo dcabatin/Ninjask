@@ -1,0 +1,2 @@
+batch   1: forward   226.1 us per decision; forward+backward ~  678.3 us per decision
+batch 256: forward    46.5 us per decision; forward+backward ~  139.5 us per decision
