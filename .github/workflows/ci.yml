@@ -8,7 +8,8 @@ name: CI
 #      play battles read (they skip without it);
 #   2. the behaviour fingerprint on the fixture teams (2000 games), which
 #      must print 6e2f85907f97e4e9 (README, "Run the checks");
-#   3. exact agreement with pinned Showdown on 200 synthetic games;
+#   3. exact agreement with pinned Showdown on 200 synthetic games and 200
+#      games of the VGCPastes pool (pools/);
 #   4. pytest.
 
 on:
@@ -79,6 +80,9 @@ jobs:
 
       - name: Exact agreement with Showdown (200 synthetic games)
         run: .venv/bin/python scripts/check_reference.py --synthetic --games 200 --workers 4
+
+      - name: Exact agreement with Showdown (200 games of real teams)
+        run: .venv/bin/python scripts/check_reference.py --pool pools/vgcpastes-regmc.txt --games 200 --workers 4
 
       - name: Python tests
         run: .venv/bin/pytest -q

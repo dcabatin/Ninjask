@@ -26,18 +26,20 @@ agent the wrong game. Ninjask is meant to be both:
   the same draws in the same order, so a seeded game produces the same log,
   the same requests and the same state after every input. It matches
   Showdown on 1,000 of 1,000 seeded games of random legal teams and 1,000 of
-  1,000 games of real tournament teams, and CI replays 200 against Showdown
-  on every change (see [How parity is verified](#how-parity-is-verified)).
-- **Fast.** About 6,000 random games (57,000 to 67,000 turns) per second on
-  one CPU core with logging off, and 35,000 to 40,000 turns per second with
-  the full protocol log on, against Showdown's 150 to 175 turns per second on
+  1,000 games of 766 real tournament teams from the
+  [VGCPastes](https://x.com/VGCPastes) Repository
+  ([`pools/`](pools/README.md)), and CI replays 400 against Showdown on every
+  change (see [How parity is verified](#how-parity-is-verified)).
+- **Fast.** About 6,000 random games (55,000 to 67,000 turns) per second on
+  one CPU core with logging off, and 34,000 to 40,000 turns per second with
+  the full protocol log on, against Showdown's 150 to 180 turns per second on
   the same machine and teams (`examples/bench.rs --log`,
   `refsim/bench_showdown.js`; a 4-vCPU cloud VM, Xeon at 2.8 GHz).
   A `Battle` is plain data: copying one for search costs microseconds.
 - **Complete for Reg M-C.** All 510 moves (and Struggle) and 166 items in the format, and
   221 of its 224 abilities (the other three belong only to Pokémon that are
-  not legal in it). Every team of a 549-team pool of public tournament pastes
-  is fully supported. Nothing is silently approximated: `Dex.team_problems`
+  not legal in it). All 766 teams of the VGCPastes pool are fully
+  supported. Nothing is silently approximated: `Dex.team_problems`
   names anything a team uses that the engine does not simulate.
 - **Built for agents.** Besides the battle itself:
   - a per-player **tracker** that builds what one side knows from the
@@ -314,15 +316,17 @@ On the bundled fixture teams (`tests/fixtures/regmc_teams.txt`) the fingerprint 
 `6e2f85907f97e4e9`. A change that preserves behaviour must leave it unchanged.
 
 The bench plays random legal games on one thread with logging off: about
-5,400 to 6,400 games/s over ten runs on one core of a 4-vCPU cloud VM (Xeon
-at 2.8 GHz), on the four fixture teams or on 704 teams from public replays
-(about 700,000 to 780,000 instructions per game under callgrind). Speed on shared hosts varies by 10% or
+5,400 to 6,700 games/s over ten runs on one core of a 4-vCPU cloud VM (Xeon
+at 2.8 GHz), on the four fixture teams or on the VGCPastes pool
+(`pools/vgcpastes-regmc.txt`; about 720,000 instructions per game under
+callgrind, 780,000 on the fixture teams). Speed on shared hosts varies by 10% or
 more between runs, so compare instruction counts (`valgrind --tool=callgrind`
 on the bench, a release build with debug info) rather than games/s across
 days.
 
 `check_reference.py` and `check_tracker.py` play on a pool of real teams when
-you have one (`--pool`, a file with one packed team per line; or the
+you give one (`--pool pools/vgcpastes-regmc.txt`, or any file with one packed
+team per line; or the
 `supported-*.txt` pools that `report_support.py` writes to
 `data/derived/teams/`), else on the fixture teams, and on random legal teams
 with `--synthetic`. `check_reference.py` also takes `--first N` (start at game
@@ -446,6 +450,7 @@ python/ninjask/              the Python package; the compiled module lands here 
 refsim/                      Node.js driver for the pinned Showdown: server, format export
 scripts/                     the checks above, and setup_showdown.sh
 tests/python/, tests/fixtures/   pytest files, a small team pool
+pools/                       real teams to verify on (VGCPastes), and their sources
 ```
 
 Each ported handler cites the Showdown function it follows. To add an entity,

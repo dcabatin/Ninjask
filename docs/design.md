@@ -929,7 +929,7 @@ Only the real-team runs caught the Floettite bug; the deferred win showed up in 
 
 ## Performance
 
-Random legal play, one CPU core, real teams: Showdown runs about 16 games/s (150 to 175 turns/s). The engine runs about 6,000 games/s, 57,000 turns/s (the `bench` example on 704 teams from public replays, logging off), and 35,000 turns/s with logging on, about 200 times Showdown, which always logs. That gap is why the engine exists: search and large-scale self-play need it. A shared host's speed varies between runs by 10% or more, so the steady measure is instructions per game under callgrind: about 700,000 (1,500 games, setup subtracted).
+Random legal play, one CPU core, real teams: Showdown runs about 16 games/s (150 to 180 turns/s). The engine runs about 6,000 games/s, 57,000 turns/s (the `bench` example on the 766 VGCPastes teams in `pools/`, logging off), and 35,000 turns/s with logging on, about 200 times Showdown, which always logs. That gap is why the engine exists: search and large-scale self-play need it. A shared host's speed varies between runs by 10% or more, so the steady measure is instructions per game under callgrind: about 720,000 (1,500 games, setup subtracted).
 
 Profile with callgrind. With logging off, log lines are not formatted at all (`log_line!`) and Pokémon identities are not built. The benchmark's random player samples each slot's option instead of enumerating every joint choice. Run it with `./target/release/examples/bench <format.json> <teams.txt> [games]`.
 

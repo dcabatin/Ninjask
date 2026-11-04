@@ -38,6 +38,17 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+VGCPastes Repository
+--------------------
+https://docs.google.com/spreadsheets/d/1axlwmzPA49rYkqXh7zHvAtSP-TKbM0ijGYBPRflLSWw
+curated by VGCPastes (https://x.com/VGCPastes)
+
+pools/vgcpastes-regmc.txt holds the Reg M-C teams of its "Champions M-C" tab,
+shared publicly by their players and packed by the pinned Showdown
+(scripts/build_vgcpastes_pool.py); pools/vgcpastes-regmc.txt.ids traces each
+team to its row. The pool is used to verify the engine and is not part of
+the crate or the Python package.
+
 pokemon-showdown-rs
 -------------------
 The Rust port of Pokémon Showdown, pokemon-showdown-rs, was read for
