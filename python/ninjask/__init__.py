@@ -19,7 +19,20 @@ from typing import TYPE_CHECKING
 from ninjask._extension import module as _compiled
 
 if TYPE_CHECKING:
-    from ninjask._core import ACTION_FIELDS, ACTION_WIDTH, IDS_LEN, OBS_LEN, Batch, Battle, BattleStateKey, Dex, EnumerationMode, Outcome, Tracker
+    from ninjask._core import (
+        ACTION_FIELDS,
+        ACTION_WIDTH,
+        DEFAULT_MAX_PATHS,
+        IDS_LEN,
+        OBS_LEN,
+        Batch,
+        Battle,
+        BattleStateKey,
+        Dex,
+        EnumerationMode,
+        Outcome,
+        Tracker,
+    )
 else:
     Dex = _compiled.Dex
     Battle = _compiled.Battle
@@ -31,6 +44,7 @@ else:
     IDS_LEN = _compiled.IDS_LEN
     ACTION_FIELDS = _compiled.ACTION_FIELDS
     ACTION_WIDTH = _compiled.ACTION_WIDTH
+    DEFAULT_MAX_PATHS = _compiled.DEFAULT_MAX_PATHS
     Outcome = _compiled.Outcome
     EnumerationMode = _compiled.EnumerationMode
     BattleStateKey = _compiled.BattleStateKey
@@ -45,12 +59,16 @@ __all__ = [
     "ACTION_WIDTH",
     "Batch",
     "Battle",
+    "BattleStateKey",
+    "DEFAULT_MAX_PATHS",
+    "EnumerationMode",
     "Dex",
     "EngineGameResult",
     "FIXTURE_POOL",
     "IDS_LEN",
     "MAX_RETRIES",
     "OBS_LEN",
+    "Outcome",
     "Policy",
     "TEAMS_DIR",
     "TURN_LIMIT",

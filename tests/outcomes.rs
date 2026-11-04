@@ -509,3 +509,31 @@ fn sampled_randomness_matches_enumerated_probabilities() {
         }
     }
 }
+
+#[test]
+fn a_path_budget_fails_fast_instead_of_running_on() {
+    let b = battle();
+    let full = b
+        .enumerate_outcomes_text("move 1", "move 1", EnumerationMode::Precise)
+        .unwrap();
+    assert!(full.len() > 2);
+    // One path cannot cover a turn with several outcomes: an error, not a partial answer.
+    let err = b
+        .enumerate_outcomes_text_within("move 1", "move 1", EnumerationMode::Precise, 1)
+        .unwrap_err();
+    assert!(err.0.contains("max_paths"), "{err}");
+    // Within the default budget, the bounded and unbounded calls agree.
+    let within = b
+        .enumerate_outcomes_text_within(
+            "move 1",
+            "move 1",
+            EnumerationMode::Precise,
+            ninjask::DEFAULT_MAX_PATHS,
+        )
+        .unwrap();
+    assert_eq!(distribution(&full), distribution(&within));
+    let c = [b.joint_choices(0)[0].clone(), b.joint_choices(1)[0].clone()];
+    assert!(b
+        .enumerate_outcomes_within(&c[0], &c[1], EnumerationMode::Precise, 1)
+        .is_err_and(|e| e.0.contains("max_paths")));
+}

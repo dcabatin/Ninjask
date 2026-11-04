@@ -69,3 +69,13 @@ def test_accuracy_and_crit_probabilities(mode, tmp_path):
     assert ko == pytest.approx(0.75 * (178956971 / 4294967296), abs=1e-12, rel=0)
     assert miss == pytest.approx(0.25, abs=1e-12, rel=0)
     assert sum(o.probability for o in result) == pytest.approx(1, abs=1e-12, rel=0)
+
+
+def test_path_budget(battle):
+    import ninjask
+    assert ninjask.DEFAULT_MAX_PATHS > 1
+    with pytest.raises(ValueError, match="max_paths"):
+        battle.enumerate_outcomes("move 1", "move 1", max_paths=1)
+    full = battle.enumerate_outcomes("move 1", "move 1")
+    bounded = battle.enumerate_outcomes("move 1", "move 1", EnumerationMode.Precise, max_paths=ninjask.DEFAULT_MAX_PATHS)
+    assert sorted(o.probability for o in full) == sorted(o.probability for o in bounded)

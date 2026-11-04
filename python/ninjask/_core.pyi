@@ -11,6 +11,34 @@ ACTION_FIELDS: int
 """Values per active slot in an action row (kind, index, target, Mega Evolution)."""
 ACTION_WIDTH: int
 """Values per row of `Batch.observe()["actions"]`."""
+DEFAULT_MAX_PATHS: int
+"""Chance paths `Battle.enumerate_outcomes` explores unless given `max_paths`."""
+
+@final
+class EnumerationMode:
+    """How `Battle.enumerate_outcomes` treats damage rolls; other chance events are exhaustive."""
+
+    Precise: EnumerationMode
+    """All 16 damage rolls."""
+    AlmostPrecise: EnumerationMode
+    """Only the lowest and highest roll, half each: an approximation."""
+
+@final
+class BattleStateKey:
+    """The full simulator state, hashable (not a player's information set)."""
+
+    def __hash__(self) -> int: ...
+    def __eq__(self, other: object, /) -> bool: ...
+
+@final
+class Outcome:
+    """One distinct result of `Battle.enumerate_outcomes`."""
+
+    @property
+    def probability(self) -> float: ...
+    @property
+    def battle(self) -> Battle:
+        """An independent copy of the resulting battle."""
 
 @final
 class Dex:
@@ -72,6 +100,14 @@ class Battle:
         """Values per row of `legal_actions(side)` (0 with nothing to choose)."""
     def choose_index(self, side: str, index: int) -> None:
         """Submit `legal_choices(side)[index]`; raises ValueError as `choose` does."""
+    def enumerate_outcomes(
+        self, choice_p1: str, choice_p2: str, mode: EnumerationMode = ..., max_paths: int = ...
+    ) -> list[Outcome]:
+        """Every distinct result of the turn (to the next request or the end),
+        with its probability, without drawing a random number. Raises ValueError
+        on a bad choice or when the turn has more than `max_paths` chance paths
+        (default `DEFAULT_MAX_PATHS`). An empty string for a side with nothing to choose."""
+    def state_key(self) -> BattleStateKey: ...
     def log(self, viewer: str, start: int) -> list[str]:
         """The protocol log from line `start`, as `viewer` sees it ("p1", "p2" or the spectator)."""
     def log_len(self) -> int: ...

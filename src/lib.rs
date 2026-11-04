@@ -70,5 +70,5 @@ pub mod python;
 pub use battle::Battle;
 pub use dex::Dex;
 
-pub use battle::BattleStateKey;
+pub use battle::{BattleStateKey, DEFAULT_MAX_PATHS};
 pub use outcome::{EnumerationError, EnumerationMode, Outcome};

@@ -7,6 +7,7 @@
 //! (side, index into `side.mons`); index == position for active Pokémon.
 
 mod enumerate;
+pub use enumerate::DEFAULT_MAX_PATHS;
 mod state_key;
 pub use state_key::BattleStateKey;
 

@@ -411,17 +411,21 @@ impl PyBattle {
     }
 
     /// Enumerate to the next request. Empty strings preserve already-submitted choices.
-    #[pyo3(signature = (choice_p1, choice_p2, mode=PyEnumerationMode::Precise))]
+    /// Explores at most `max_paths` chance paths (each replays the turn) and
+    /// raises ValueError beyond that, so a turn with many attacks fails fast
+    /// instead of running for minutes.
+    #[pyo3(signature = (choice_p1, choice_p2, mode=PyEnumerationMode::Precise, max_paths=crate::DEFAULT_MAX_PATHS))]
     fn enumerate_outcomes(
         &self,
         py: Python<'_>,
         choice_p1: &str,
         choice_p2: &str,
         mode: PyEnumerationMode,
+        max_paths: u64,
     ) -> PyResult<Vec<PyOutcome>> {
         py.detach(|| {
             self.inner
-                .enumerate_outcomes_text(choice_p1, choice_p2, mode.into())
+                .enumerate_outcomes_text_within(choice_p1, choice_p2, mode.into(), max_paths)
         })
         .map(|outcomes| {
             outcomes
@@ -857,6 +861,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTracker>()?;
     m.add_class::<PyBatch>()?;
     m.add("ACTION_WIDTH", crate::batch::ACTION_WIDTH)?;
+    m.add("DEFAULT_MAX_PATHS", crate::DEFAULT_MAX_PATHS)?;
     m.add("OBS_LEN", crate::encode::OBS_LEN)?;
     m.add("IDS_LEN", crate::encode::IDS_LEN)?;
     m.add("ACTION_FIELDS", crate::encode::ACTION_FIELDS)?;
