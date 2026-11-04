@@ -56,7 +56,13 @@ fn le_bytes<'py, const N: usize, T: Copy>(
 }
 
 /// Damage enumeration policy. Other chance events are exhaustive in both modes.
-#[pyclass(name = "EnumerationMode", module = "ninjask", eq, eq_int, from_py_object)]
+#[pyclass(
+    name = "EnumerationMode",
+    module = "ninjask",
+    eq,
+    eq_int,
+    from_py_object
+)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PyEnumerationMode {
     Precise,
