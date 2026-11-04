@@ -21,6 +21,78 @@ use crate::battle::Battle;
 use crate::dex::support;
 use crate::dex::Dex;
 
+/// Every increasing `k`-subset of `0..n`, in lexicographic order.
+fn combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
+    let mut out = Vec::new();
+    let mut cur = Vec::with_capacity(k);
+    fn go(start: usize, n: usize, k: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+        if cur.len() == k {
+            out.push(cur.clone());
+            return;
+        }
+        for i in start..n {
+            cur.push(i);
+            go(i + 1, n, k, cur, out);
+            cur.pop();
+        }
+    }
+    go(0, n, k, &mut cur, &mut out);
+    out
+}
+
+/// Values per Pokémon in `Tracker.encode`.
+pub const ENCODE_MON: usize = 4 + 7 + 7 + 1;
+/// Length of `Tracker.encode`: two sides of six Pokémon and six side
+/// conditions, then weather (4), terrain (4), Trick Room and Gravity.
+pub const ENCODE_LEN: usize = 2 * (6 * ENCODE_MON + 6) + 4 + 4 + 2;
+
+fn encode_view(t: &crate::tracker::Tracker) -> Vec<f32> {
+    use crate::dex::types::Status;
+    use crate::state::SideCond;
+    let mut v = Vec::with_capacity(ENCODE_LEN);
+    for side in [t.me, 1 - t.me] {
+        let sv = &t.sides[side];
+        for i in 0..6 {
+            match sv.mons.get(i) {
+                Some(m) => {
+                    v.push(if m.maxhp > 0 {
+                        m.hp as f32 / m.maxhp as f32
+                    } else {
+                        0.0
+                    });
+                    v.push(m.fainted as u8 as f32);
+                    v.push(m.seen as u8 as f32);
+                    v.push(m.slot.is_some() as u8 as f32);
+                    let st = match m.status {
+                        Status::None | Status::Fnt => 0,
+                        Status::Brn => 1,
+                        Status::Par => 2,
+                        Status::Psn => 3,
+                        Status::Tox => 4,
+                        Status::Slp => 5,
+                        Status::Frz => 6,
+                    };
+                    v.extend((0..7).map(|k| (k == st) as u8 as f32));
+                    v.extend(m.boosts.iter().map(|&b| b as f32 / 6.0));
+                    v.push(m.mega as u8 as f32);
+                }
+                None => v.extend(std::iter::repeat_n(0.0, ENCODE_MON)),
+            }
+        }
+        for c in SideCond::ALL {
+            v.push(sv.conditions.iter().any(|(k, _)| *k == c) as u8 as f32);
+        }
+    }
+    let weather = t.field.weather.map(|(w, _)| w as usize);
+    v.extend((0..4).map(|k| (weather == Some(k)) as u8 as f32));
+    let terrain = t.field.terrain.map(|(x, _)| x as usize);
+    v.extend((0..4).map(|k| (terrain == Some(k)) as u8 as f32));
+    v.push(t.field.trick_room.is_some() as u8 as f32);
+    v.push(t.field.gravity.is_some() as u8 as f32);
+    debug_assert_eq!(v.len(), ENCODE_LEN);
+    v
+}
+
 /// "p1" or "p2" as a side index.
 pub fn side_index(side: &str) -> PyResult<usize> {
     match side {
@@ -227,6 +299,47 @@ impl PyBattle {
             .map_err(PyValueError::new_err)
     }
 
+    /// The side's legal choices in Showdown's choice syntax, listed by the
+    /// engine: every ordered pick at team preview (the first two lead),
+    /// else every joint move or switch choice, ally targets included. Empty
+    /// when the side has no request.
+    ///
+    /// Research prototype (research/README.md): the engine lists what is
+    /// truly legal, so where the request only says `maybeDisabled` (a foe's
+    /// Imprison the player hasn't seen) it leaves out a move the player
+    /// would still try. That reveals hidden information in about 0.4% of
+    /// decisions; a released version should list choices from the request's
+    /// view instead.
+    fn legal_choices(&self, side: &str) -> PyResult<Vec<String>> {
+        let s = side_index(side)?;
+        let b = &self.inner;
+        if !b.side_needs_choice(s) {
+            return Ok(Vec::new());
+        }
+        if b.request == crate::state::RequestState::TeamPreview {
+            let n = b.sides[s].mons.len();
+            let bring = b.dex.format.picked_team_size.unwrap_or(n).min(n);
+            let mut out = Vec::new();
+            for picked in combinations(n, bring) {
+                for leads in combinations(picked.len(), bring.min(2)) {
+                    let lead: Vec<usize> = leads.iter().map(|&i| picked[i]).collect();
+                    let rest = picked.iter().filter(|p| !lead.contains(p));
+                    let order: String = lead
+                        .iter()
+                        .chain(rest)
+                        .map(|p| (p + 1).to_string())
+                        .collect();
+                    out.push(format!("team {order}"));
+                }
+            }
+            return Ok(out);
+        }
+        Ok(b.joint_choices(s)
+            .iter()
+            .map(|c| b.choice_string(c))
+            .collect())
+    }
+
     fn log(&self, viewer: &str, start: usize) -> Vec<String> {
         self.inner.log_for(viewer, start)
     }
@@ -419,6 +532,16 @@ impl PyTracker {
         self.inner.to_json().to_string()
     }
 
+    /// The view as a fixed-length list of floats, for a model: the player's
+    /// own side, then the foe's, then the field. Each side has six Pokémon
+    /// slots of `ENCODE_MON` values (HP fraction, fainted, seen, active,
+    /// status one-hot, boost stages / 6, Mega Evolved), then its side
+    /// conditions; the field is weather, terrain, Trick Room and Gravity.
+    /// Only what the view holds is encoded, so nothing hidden leaks.
+    fn encode(&self) -> Vec<f32> {
+        encode_view(&self.inner)
+    }
+
     /// A world: the battle this view describes, with `assumptions` (JSON,
     /// see `World::from_view`; None for the defaults) for the foe's hidden
     /// sets. Raises ValueError on bad assumptions.
@@ -445,7 +568,17 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDex>()?;
     m.add_class::<PyBattle>()?;
     m.add_class::<PyTracker>()?;
+    #[cfg(feature = "approx")]
+    m.add_function(wrap_pyfunction!(set_approx, m)?)?;
     Ok(())
+}
+
+/// Research builds only (feature `approx`): set the switches of
+/// `ninjask::approx` for every battle in the process (0 is exact play).
+#[cfg(feature = "approx")]
+#[pyfunction]
+fn set_approx(flags: u32) {
+    crate::approx::set(flags);
 }
 
 /// `ninjask._core`, the extension module the `ninjask` package re-exports.
