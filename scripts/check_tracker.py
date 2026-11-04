@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from ninjask.tracker_check import engine_games, note_disguises, showdown_games
@@ -55,6 +56,8 @@ def main() -> None:
     counts = run(args.games, args.seed, ots=args.ots, require=tuple(r for r in args.require.split(",") if r), pool=args.pool,
                  on_decision=world if args.world else None)
     print(dict(counts))
+    # Fail the run when the tracker or a world disagreed with the truth.
+    sys.exit(1 if counts["_shown"] or counts["_world_shown"] else 0)
 
 
 if __name__ == "__main__":
