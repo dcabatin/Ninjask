@@ -8,9 +8,9 @@ use crate::kinds::{AbilityKind, ItemKind};
 use crate::state::*;
 
 impl Battle {
-    /// Fling's `onPrepareHit`: the held item's power and effect. `None` when
-    /// the move fails; else the move as thrown.
-    pub(crate) fn fling_on_prepare_hit(&mut self, r: MonRef, mv: &Move) -> Option<Move> {
+    /// The item `r` would throw with Fling and its power, or `None` when
+    /// Fling fails: the checks at the top of Fling's `onPrepareHit`.
+    pub(crate) fn fling_item(&self, r: MonRef) -> Option<(ItemId, u16)> {
         if self.ignoring_item(r) || !self.mon(r).is_active {
             return None;
         }
@@ -18,10 +18,15 @@ impl Battle {
         if !self.item_receivable(r, item) {
             return None;
         }
+        let power = self.dex.item(item).fling_power;
+        (power != 0).then_some((item, power))
+    }
+
+    /// Fling's `onPrepareHit`: the held item's power and effect. `None` when
+    /// the move fails; else the move as thrown.
+    pub(crate) fn fling_on_prepare_hit(&mut self, r: MonRef, mv: &Move) -> Option<Move> {
+        let (item, _) = self.fling_item(r)?;
         let it = self.dex.item(item).clone();
-        if it.fling_power == 0 {
-            return None;
-        }
         let mut m = mv.clone();
         m.base_power = it.fling_power;
         self.active_move.fling = None;

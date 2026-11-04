@@ -293,6 +293,15 @@ impl Battle {
         if let Some(m) = self.sheer_force_on_modify_move(r, &mv) {
             mv = Cow::Owned(m);
         }
+        // Fling's `onPrepareHit` (after `ModifyMove`) takes its power from
+        // the held item; only the power, as the rest changes the state.
+        if kind == MoveKind::Fling {
+            if let Some((_, power)) = self.fling_item(r) {
+                let mut m = mv.into_owned();
+                m.base_power = power;
+                mv = Cow::Owned(m);
+            }
+        }
         PreparedMove {
             kind,
             mv: match mv {
