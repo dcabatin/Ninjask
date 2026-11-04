@@ -33,7 +33,7 @@ agent the wrong game. Ninjask is meant to be both:
   protocol log on, against Showdown's 200 turns per second on the same
   machine and teams (`examples/bench.rs --log`, `refsim/bench_showdown.js`).
   A `Battle` is plain data: copying one for search costs microseconds.
-- **Complete for Reg M-C.** All 511 moves and 166 items in the format, and
+- **Complete for Reg M-C.** All 510 moves (and Struggle) and 166 items in the format, and
   221 of its 224 abilities (the other three belong only to Pokémon that are
   not legal in it). Every team of a 549-team pool of public tournament pastes
   is fully supported. Nothing is silently approximated: `Dex.team_problems`
