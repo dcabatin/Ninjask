@@ -2,8 +2,26 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-11-04)
+
+Two fixes found by checking the engine on inputs nobody chose (games under
+a fresh seed, and teams from public sources); every other seeded game gives
+the same logs, requests and draws as 0.2.0, and the fingerprint is still
+`6e2f85907f97e4e9`. The checks can now fail, and the wheels cover more of
+the Python world.
+
 ### Changed
 
+- **Wheels use the stable ABI**: one wheel per platform for CPython 3.12
+  and every later version (3.14 included), and new wheels for Linux musl
+  (Alpine; x86_64 and aarch64) and Windows on Arm.
+- **The checks fail when they find a problem.** `check_reference.py`,
+  `check_tracker.py` and `verify_engine.py` exited 0 whatever they found, so
+  CI's parity step could not fail; they now exit 1 on a divergence, a
+  tracker or world mismatch, or a failed comparison. CI also replays 200
+  games of real teams (below).
+- `ninjask.__all__` lists the package's public names, so
+  `from ninjask import Battle` type-checks under `mypy --strict`.
 - pyo3 0.25 → 0.30, which fixes RUSTSEC-2026-0176 and RUSTSEC-2026-0177
   (Ninjask called neither affected API). A crate that embeds Ninjask's
   classes (feature `python`) must build against pyo3 0.30 too.
@@ -21,6 +39,17 @@
   a base power of 0 (1 or 2 HP a roll) instead of its item's Fling power.
   `damage_check` on 704 teams from public replays found it: 6 of 87,591
   first hits disagreed with play, all Fling. Play itself was right.
+
+### Added
+
+- `pools/vgcpastes-regmc.txt`: 766 Reg M-C tournament teams from the
+  [VGCPastes](https://x.com/VGCPastes) Repository, with each team's sheet ID
+  and `scripts/build_vgcpastes_pool.py` to rebuild it. The README's
+  real-team claims are measured on it (1,000 of 1,000 games; 766 of 766
+  supported).
+- README: known limitations, the stability promise before 1.0, where the
+  Rust quick start's data comes from, legal choices and tracker feeding in
+  Python, and speed figures re-measured with their spread and machine.
 
 ## 0.2.0 (2026-10-29)
 
