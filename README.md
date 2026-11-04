@@ -62,10 +62,10 @@ simulator underneath them, with the tools to prove it matches the reference.
 pip install ninjask      # the Reg M-C formats are bundled
 ```
 
-Wheels are published for CPython 3.12 and 3.13 on Linux (x86_64 and aarch64,
-glibc), macOS (x86_64 and arm64) and Windows (x86_64). Elsewhere (Python
-3.14, Alpine, Windows on Arm) pip builds from the source distribution, which
-needs a Rust toolchain and takes a few minutes.
+One wheel per platform serves CPython 3.12 and every later version (the
+stable ABI): Linux x86_64 and aarch64 (glibc, and musl for Alpine), macOS
+x86_64 and arm64, and Windows x86_64 and arm64. Elsewhere pip builds from
+the source distribution, which needs a Rust toolchain.
 
 Play a game between two random policies:
 
@@ -234,9 +234,9 @@ harness on a few games.
 - **One pinned Showdown.** Parity is with commit `3a766f2` (2026-10-13).
   Changes Showdown makes after it are not followed until the pin moves. The
   tracker reads logs from the live server, which may run a newer version.
-- **Wheels** exist for CPython 3.12 and 3.13 on Linux glibc (x86_64,
-  aarch64), macOS (x86_64, arm64) and Windows (x86_64). Python 3.14, Alpine
-  and Windows on Arm build from source and need Rust.
+- **Wheels** are for CPython 3.12 and later on the platforms listed in the
+  quick start; PyPy, free-threaded CPython (3.14t) and other platforms build
+  from source and need Rust.
 - **The crate ships no format data**: Rust users take it from the wheel (see
   the Rust quick start) or export it from a checkout.
 - **Typing.** The compiled classes and the examples above pass
