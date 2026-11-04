@@ -42,6 +42,9 @@ agent the wrong game. Ninjask is meant to be both:
   supported. Nothing is silently approximated: `Dex.team_problems`
   names anything a team uses that the engine does not simulate.
 - **Built for agents.** Besides the battle itself:
+  - a **batched training interface** (`ninjask.Batch`): many battles on all
+    cores, with each player's observation and legal choices handed over as
+    numeric buffers, at about 1,300 random games per second;
   - a per-player **tracker** that builds what one side knows from the
     protocol, and reads Showdown's live logs the same way;
   - **worlds**: battles consistent with one player's view, with the foe's
@@ -122,6 +125,45 @@ touching `b`. `b.damage("p1a", move_id, "p2b")` runs the damage calculation
 `Battle.reference(d, team1, team2, "sodium," + "0" * 64)` runs a battle in
 reference mode, seeded like Showdown (a `sodium,<hex>` seed string), so it
 reproduces a Showdown game draw for draw.
+
+### Training at scale
+
+For training, `ninjask.Batch` steps many battles at once, in parallel, and
+hands over every pending decision as numeric buffers: each player's
+observation (only what that player knows) and its legal choices, ready for
+`numpy.frombuffer`. One call reports the decisions and one applies a choice
+index to each:
+
+```python
+import numpy as np
+import ninjask
+
+d = ninjask.dex("gen9championsvgc2026regmc")
+teams = ninjask.verification_teams()
+n = 64
+batch = ninjask.Batch(d, n)  # 64 battles, stepped on all cores
+batch.reset_many(list(range(n)), [teams[i % 4] for i in range(n)], [teams[(i + 1) % 4] for i in range(n)], list(range(n)))
+rng = np.random.default_rng(0)
+while True:
+    o = batch.observe()  # every pending decision, both sides of every battle
+    if o["n"] == 0:
+        break
+    obs = np.frombuffer(o["obs"], np.float32).reshape(o["n"], ninjask.OBS_LEN)  # what each player sees
+    offsets = np.frombuffer(o["offsets"], np.uint32).astype(np.int64)
+    counts = offsets[1:] - offsets[:-1]  # legal choices per decision
+    picks = (rng.random(o["n"]) * counts).astype(np.int64)  # your policy goes here
+    batch.step(picks.tolist())
+print([batch.winner(i) for i in range(4)])  # "p1", "p2" or None
+```
+
+On one core of a 4-vCPU cloud VM this plays about 700 random games per second
+with every decision observed, and about 1,300 on four cores; a loop through
+the JSON requests above plays about 45. `Battle.legal_choices(side)`,
+`.legal_actions(side)`, `.choose_index(side, i)` and `Tracker.encode()` give the
+same interface for a single battle. Choices are listed from the player's
+view, so, as in Showdown, one can be refused for something hidden (a foe's
+Imprison, a trap): the decision then stays pending, with what the refusal
+revealed.
 
 ### Rust
 
@@ -391,13 +433,20 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
 
 - `Dex.load(path)`, `.team_problems(packed)`, `.move_support(id)`,
   `.species_ids()`, `.generic_moves()`, `.implemented_moves()`,
-  `.supported_abilities()`, `.supported_items()`.
+  `.supported_abilities()`, `.supported_items()`, `.vocab()` (embedding-table
+  sizes for `Tracker.encode_ids()`).
 - `Battle(dex, team1, team2, seed)`, `Battle.reference(...)`,
   `Battle.from_projection(...)`, `.request(side)`, `.needs_choice(side)`,
   `.choose(side, choice)` (raises `ValueError` on an illegal choice, as
   Showdown rejects it), `.log(viewer, start)`, `.log_len()`, `.set_logging(on)`,
   `.projection()`, `.copy()`, `.reseed(seed)`, `.ended`, `.winner` (the
   player's name), `.winner_side` (`"p1"`, `"p2"` or `None`), `.turn`.
+- `Battle.legal_choices(side)`: the choices the side's request offers, in
+  Showdown syntax and in `ninjask.choices`' order, built without the
+  request; `.legal_actions(side)`: the same as int8 rows of
+  `.action_width(side)` values (per slot: kind 0 pass, 1 move, 2 switch,
+  3 Struggle or recharge; move slot or team position; target; Mega
+  Evolution; at team preview, the order sent); `.choose_index(side, i)`.
 - `Tracker(dex, side)` with `.feed(lines)`, `.feed_request(json)`,
   `.feed_battle(battle)`, `.view()` and `.world(assumptions=None, seed=0)`
   (a `Battle`; assumptions as JSON, see `world::Assumptions::from_json`).
@@ -405,6 +454,16 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
   as its request would; everything else comes from the protocol lines, so in
   self-play feed both: `t.feed(b.log(side, seen)); t.feed_battle(b)`.
   `view()` is JSON text whose `sides` are always in the order p1, p2.
+  `.encode()` is the view as `ninjask.OBS_LEN` float32 values (own side
+  first), and `.encode_ids()` its species, items, abilities and moves as
+  `ninjask.IDS_LEN` int16 values (0 when unknown), as bytes for
+  `numpy.frombuffer`; layouts in `src/encode.rs`.
+- `Batch(dex, n)`: `n` battles with both players' trackers, stepped in
+  parallel with the GIL released. `.reset(i, team1, team2, seed)`,
+  `.reset_many(...)`, `.observe()` (every pending decision: who, the
+  observation and ids, the legal actions and their offsets),
+  `.step(choices)` (one index per decision; all checked before any is
+  applied), `.dones()`, `.winner(i)`, `.turn(i)`, `.battle(i)` (a copy).
 - `Battle.damage(attacker, move, target)` (slots like "p1a"; JSON),
   `.order(a, plan_a, b, plan_b)` (a plan is a move id, "switch" or
   "priority:N"; returns `(first, tie)`) and `.speeds()`.
@@ -418,12 +477,12 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
 - `refsim`: a client for the Showdown reference server (`RefSim`, `Battle`).
 - `choices`, `policy`, `play`, `verify`, `tracker_check`: legal-choice
   enumeration, the policy interface, game loops for either simulator, and the
-  distribution and tracker checks. The legal choices for a request (as a
-  dict) are `choices.team_preview_choices(request)` when
-  `request.get("teamPreview")`, else
-  `choices.joint_choices(request, game_type="doubles")`. A choice from that
-  list can still be rejected because of something hidden (a trap or a disable), so keep
-  the retry loop of the quick start.
+  distribution and tracker checks. `choices.joint_choices(request,
+  game_type="doubles")` (and `team_preview_choices`) list the legal choices
+  from a request's JSON, as Showdown's own bots would;
+  `Battle.legal_choices` gives the same list without the JSON. A choice
+  from either can still be refused because of something hidden (a trap or
+  a disable), so keep the retry loop of the quick start.
 - `paths`: where Showdown and generated data live. Defaults are inside the
   checkout (`third_party/`, `data/derived/`); override with `NINJASK_HOME`,
   `NINJASK_SHOWDOWN` and `NINJASK_DATA`. `NINJASK_POOL` sets the default team

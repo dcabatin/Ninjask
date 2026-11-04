@@ -62,15 +62,22 @@ That is 45 games/s, against 6,500 games/s for the same games played in
 Rust. The engine step is under 5% of the loop.
 
 **The same loop through a native interface** (`python_loop_native.py`:
-the prototypes `Battle.legal_choices()` and `Tracker.encode()`, a
-250-float observation): 427 games/s with observations, 9.5 times the
-JSON loop, and 825 games/s without. Listing choices (40 µs, mostly
-formatting their strings) is now the largest cost; returning indices would
-cut it further. `legal_choices` matches `ninjask.choices` on 7,647 of 7,677
-decisions (`check_legal_choices.txt`). In the other 30 it leaves out a move
-the request marks only as `maybeDisabled`, which reveals hidden
-information. A released version must list choices from the player's
-view.
+`Battle.legal_choices()` and `Tracker.encode()`, a 250-float observation):
+427 games/s with observations, 9.5 times the JSON loop, and 825 games/s
+without. The first prototype listed the engine's own legal choices, which
+matched `ninjask.choices` on 7,647 of 7,677 decisions
+(`check_legal_choices.txt`): in the other 30 it left out a move the request
+marked only as `maybeDisabled`, revealing a foe's unseen Imprison. The
+released version lists choices from the player's view instead and matches
+on 18,334 of 18,334 decisions, in order, including teams built around
+Imprison and traps (`check_player_choices.txt`).
+
+**Batched** (`bench_batch.py`, `ninjask.Batch`: 256 battles, every decision
+observed, choices as indices): 713 games/s on one core and 1,380 on four
+(`bench_batch.txt`), 29 times the JSON loop, with results identical at any
+thread count and to battles played one by one (`check_batch.txt`). What is
+left is mostly the engine with logging on and the trackers parsing
+protocol lines.
 
 **A neural policy** (`model_cost.py`, numpy, one thread: a 2 × 512 MLP over
 the observation scoring 100 choice embeddings): 226 µs per decision
@@ -163,10 +170,10 @@ So, for training:
 
 ## Directions this suggests
 
-- **A native observation and action interface.** Choices listed from the
-  player's view (not the engine's), as indices; observations as arrays;
-  stepping many battles per call. This is the 10–30× lever, at full
-  parity.
+- **A native observation and action interface:** done in this release
+  (`Battle.legal_choices`, `Tracker.encode`, `ninjask.Batch`); it is the
+  10–30× lever, at full parity. Next on it: feeding trackers from the
+  engine's events instead of protocol text.
 - **Exact outcome enumeration for search,** as PokaiEngine does, at
   Ninjask's parity: the speed lever that matters once the engine is the
   bottleneck.
