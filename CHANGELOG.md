@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-11-04)
+
+A native interface for training (`ninjask.Batch`, player-view legal
+choices, numeric observations), experimental exact outcome enumeration
+contributed by CalebBrody (dcabatin/Ninjask#8), and `research/` on what
+trading parity for speed would buy. Every seeded game gives the same logs,
+requests and draws as 0.3.0; the fingerprint is still `6e2f85907f97e4e9`.
+
+Upgrading an editable checkout from before 0.3.0: delete
+`python/ninjask/_core.cpython-*.so`, or Python keeps loading it instead of
+the new `_core.abi3.so`.
+
 ### Added
 
 - **Experimental:** Rust and Python outcome enumeration for search and regret minimization,
