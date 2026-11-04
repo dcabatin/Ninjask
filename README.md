@@ -80,9 +80,11 @@ so code written for Showdown bots carries over. To drive a battle yourself:
 
 ```python
 import json
+import ninjask
 from ninjask import Battle, dex
 from ninjask.policy import RandomPolicy
 
+team1, team2 = ninjask.verification_teams()[:2]
 d = dex("gen9championsvgc2026regmc")
 assert d.team_problems(team1) == []  # [] when the engine fully supports the team
 
@@ -99,7 +101,7 @@ while not b.ended and b.turn < 150:
                     break
                 except ValueError:                               # rejected, as Showdown rejects it
                     pass                                         # (a hidden disable); the request now shows it
-print(b.winner, b.turn)
+print(b.winner_side, b.turn)                                    # "p1", "p2" or None; .winner is the player's name
 print("\n".join(b.log("p1", 0)[:10]))                           # p1's view of the protocol log
 ```
 
@@ -350,7 +352,8 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
   `Battle.from_projection(...)`, `.request(side)`, `.needs_choice(side)`,
   `.choose(side, choice)` (raises `ValueError` on an illegal choice, as
   Showdown rejects it), `.log(viewer, start)`, `.log_len()`, `.set_logging(on)`,
-  `.projection()`, `.copy()`, `.reseed(seed)`, `.ended`, `.winner`, `.turn`.
+  `.projection()`, `.copy()`, `.reseed(seed)`, `.ended`, `.winner` (the
+  player's name), `.winner_side` (`"p1"`, `"p2"` or `None`), `.turn`.
 - `Tracker(dex, side)` with `.feed(lines)`, `.feed_request(json)`,
   `.feed_battle(battle)`, `.view()` and `.world(assumptions=None, seed=0)`
   (a `Battle`; assumptions as JSON, see `world::Assumptions::from_json`).
