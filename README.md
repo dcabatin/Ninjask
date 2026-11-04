@@ -101,7 +101,9 @@ while not b.ended and b.turn < 150:
     for side in ("p1", "p2"):
         if b.needs_choice(side):
             while True:
-                request = json.loads(b.request(side))            # Showdown's request JSON
+                text = b.request(side)                           # Showdown's request JSON:
+                assert text is not None                          # None only when no choice is due
+                request = json.loads(text)
                 try:
                     b.choose(side, policy.choose(request, []))   # e.g. "move 1 1, move 2 2"
                     break
@@ -237,10 +239,9 @@ harness on a few games.
   and Windows on Arm build from source and need Rust.
 - **The crate ships no format data**: Rust users take it from the wheel (see
   the Rust quick start) or export it from a checkout.
-- **Typing.** The compiled classes are fully typed, but `Battle.request()`
-  is `str | None`, so `json.loads(b.request(side))` needs a check under
-  mypy. The helper modules (`verify`, `play`, ...) are not checked with
-  `--strict`.
+- **Typing.** The compiled classes and the examples above pass
+  `mypy --strict`; the helper modules (`verify`, `play`, ...) are not
+  checked with `--strict`.
 
 **Stability before 1.0.** A patch release (0.2.x) keeps the public Rust
 and Python API and changes behaviour only to match the pinned Showdown more
