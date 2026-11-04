@@ -104,8 +104,8 @@ class Battle:
     def enumerate_outcomes(
         self, choice_p1: str, choice_p2: str, mode: EnumerationMode = ..., max_paths: int = ...
     ) -> list[Outcome]:
-        """Every distinct result of the turn (to the next request or the end),
-        with its probability, without drawing a random number. Raises ValueError
+        """Experimental: every distinct result of the turn (to the next request
+        or the end), with its probability, without drawing a random number. Raises ValueError
         on a bad choice or when the turn has more than `max_paths` chance paths
         (default `DEFAULT_MAX_PATHS`). An empty string for a side with nothing to choose."""
     def state_key(self) -> BattleStateKey: ...

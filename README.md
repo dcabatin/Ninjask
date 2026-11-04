@@ -291,7 +291,8 @@ harness on a few games.
 and Python API and changes behaviour only to match the pinned Showdown more
 closely; every such change is in the CHANGELOG. A minor release (0.4) may
 change the API or move the Showdown pin, and the CHANGELOG says what to
-update.
+update. Features marked experimental (today, outcome enumeration) are
+outside this promise and may change in any release.
 
 ## Working from source
 
@@ -488,7 +489,11 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
   `NINJASK_SHOWDOWN` and `NINJASK_DATA`. `NINJASK_POOL` sets the default team
   pool of the checks.
 
-## Enumerating chance outcomes
+## Enumerating chance outcomes (experimental)
+
+**Experimental:** exact, but too slow for most full turns (see the budget
+below), and its API may change in any release, including a patch, as a
+faster design replaces it.
 
 `Battle::enumerate_outcomes(&choice_p1, &choice_p2, mode)` accepts the existing
 structured side choices (`&[SlotChoice]`) and returns

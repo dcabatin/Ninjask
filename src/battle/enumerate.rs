@@ -1,5 +1,8 @@
 //! Enumerate by replaying explicit chance paths; the Rust stack runs normally.
 //!
+//! **Experimental:** exact, but too slow for most full turns, and the API
+//! may change in any release (README, "Stability before 1.0").
+//!
 //! Each chance path replays the whole turn, and paths multiply with every
 //! hit (accuracy, critical hit, 16 damage rolls), so a turn with several
 //! attacks can have millions of them even when few outcomes differ. Every
@@ -24,6 +27,7 @@ pub const DEFAULT_MAX_PATHS: u64 = 20_000;
 
 impl Battle {
     /// Enumerate until the next player request or battle end without mutating self.
+    /// Experimental (see the module docs).
     /// Supply an empty choice for a side that does not currently need one.
     /// Team preview uses its separate team-order API and is not accepted here.
     /// Fails when the turn has more than [`DEFAULT_MAX_PATHS`] chance paths;

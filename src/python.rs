@@ -410,7 +410,8 @@ impl PyBattle {
         self.inner.choose(s, &choice).map_err(PyValueError::new_err)
     }
 
-    /// Enumerate to the next request. Empty strings preserve already-submitted choices.
+    /// Experimental: enumerate to the next request. Empty strings preserve
+    /// already-submitted choices.
     /// Explores at most `max_paths` chance paths (each replays the turn) and
     /// raises ValueError beyond that, so a turn with many attacks fails fast
     /// instead of running for minutes.
