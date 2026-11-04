@@ -241,8 +241,6 @@ harness on a few games.
   is `str | None`, so `json.loads(b.request(side))` needs a check under
   mypy. The helper modules (`verify`, `play`, ...) are not checked with
   `--strict`.
-- **pyo3 0.25** carries two advisories fixed in 0.29 (RUSTSEC-2026-0176,
-  RUSTSEC-2026-0177). Ninjask's own code calls neither affected API.
 
 **Stability before 1.0.** A patch release (0.2.x) keeps the public Rust
 and Python API and changes behaviour only to match the pinned Showdown more
@@ -463,7 +461,8 @@ would be incompatible. Build one module holding both, and tell the `ninjask`
 package to take its classes from it:
 
 1. Depend on the crate with the feature `python` (not `python-module`):
-   `ninjask = { git = "https://github.com/dcabatin/Ninjask", features = ["python"] }`.
+   `ninjask = { git = "https://github.com/dcabatin/Ninjask", features = ["python"] }`,
+   and on the same pyo3 as Ninjask (`pyo3 = "0.30"`).
 2. In your `#[pymodule]`, call `ninjask::python::register(m)?`, then add your
    own classes. Their methods take `&ninjask::python::PyBattle`,
    `&PyTracker` and `&PyDex`, whose `inner` fields are the Rust objects.
