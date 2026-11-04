@@ -17,7 +17,7 @@ def test_modes_and_immutable_input(battle):
     key = battle.state_key()
     assert isinstance(key, BattleStateKey)
     precise = battle.enumerate_outcomes("move 1", "move 1")
-    almost = battle.enumerate_outcomes("move 1", "move 1", EnumerationMode.AlmostPrecise)
+    almost = battle.enumerate_outcomes("move 1", "move 1", EnumerationMode.DamageEndpoints)
     assert len(precise) > 2
     assert len(almost) == 2
     assert all(isinstance(o, Outcome) and isinstance(o.battle, Battle) for o in precise)
@@ -48,7 +48,7 @@ def test_deterministic_turn(battle):
     assert outcomes[0].probability == 1
 
 
-@pytest.mark.parametrize("mode", [EnumerationMode.Precise, EnumerationMode.AlmostPrecise])
+@pytest.mark.parametrize("mode", [EnumerationMode.Precise, EnumerationMode.DamageEndpoints])
 def test_accuracy_and_crit_probabilities(mode, tmp_path):
     spec = json.loads((Path(__file__).parents[1] / "fixtures" / "enumeration.json").read_text())
     spec["moves"][0]["accuracy"] = 75

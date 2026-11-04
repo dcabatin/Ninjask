@@ -6,8 +6,13 @@ use crate::Battle;
 pub enum EnumerationMode {
     #[default]
     Precise,
-    /// All other chance events remain exact; damage endpoints each get 1/2.
-    AlmostPrecise,
+    /// An approximation, not Showdown's distribution: each damage roll is
+    /// replaced by its lowest and highest value, half the probability each.
+    /// All other chance events remain exact. It undercounts or overcounts
+    /// KOs when the roll range straddles one: on "who faints this turn" it
+    /// was off by up to 42 percentage points in one of 28 real mid-game
+    /// states measured (`examples/validate_outcomes.rs`), and exact in most.
+    DamageEndpoints,
 }
 
 #[derive(Clone, Debug)]

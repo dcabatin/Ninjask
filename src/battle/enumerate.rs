@@ -9,7 +9,7 @@
 //! for minutes. A path costs about 33 µs (one core of a 4-vCPU VM), so the
 //! default is about 0.7 s. On 40 mid-game states of real teams with random
 //! choices (`examples/validate_outcomes.rs`), Precise finished within it on
-//! 14 and AlmostPrecise, which keeps only the two extreme damage rolls, on
+//! 14 and DamageEndpoints, which keeps only the two extreme damage rolls, on
 //! 22; the rest have more paths. Endgames and turns with few attacks fit;
 //! for the others, raise `max_paths` or sample the turn.
 use super::{Battle, BattleStateKey};
@@ -137,7 +137,7 @@ impl Battle {
             if paths == max_paths {
                 return Err(EnumerationError(format!(
                     "the turn has more than {max_paths} chance paths (max_paths); \
-                     raise the budget, use AlmostPrecise, or sample the turn instead"
+                     raise the budget, use DamageEndpoints, or sample the turn instead"
                 )));
             }
             paths += 1;

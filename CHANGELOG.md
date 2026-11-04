@@ -11,7 +11,7 @@
   `max_paths` chance paths (`DEFAULT_MAX_PATHS`, 20,000, about 0.7 s) and
   raises an error beyond that instead of running for minutes: on 40
   mid-game states of real teams, Precise fit the default budget on 14 and
-  AlmostPrecise on 22 (`examples/validate_outcomes.rs`). Where it finished
+  DamageEndpoints on 22 (`examples/validate_outcomes.rs`). Where it finished
   it was exact against 28,000 sampled resolutions.
 - **A native interface for training**, with no JSON and no strings in the
   loop:

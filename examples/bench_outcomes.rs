@@ -48,7 +48,7 @@ fn main() {
         let choices = std::array::from_fn(|side| {
             b.joint_choices(side).into_iter().find(|c| matches!(c.as_slice(), [SlotChoice::Move {slot, ..}] if *slot == slots[side])).unwrap()
         });
-        let modes = [EnumerationMode::Precise, EnumerationMode::AlmostPrecise];
+        let modes = [EnumerationMode::Precise, EnumerationMode::DamageEndpoints];
         let counts: Vec<_> = modes
             .iter()
             .map(|&mode| {

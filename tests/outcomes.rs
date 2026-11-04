@@ -32,7 +32,7 @@ fn damage_modes_merge_rounding_and_preserve_input() {
         .enumerate_outcomes_text("move 1", "move 1", EnumerationMode::Precise)
         .unwrap();
     let almost = b
-        .enumerate_outcomes_text("move 1", "move 1", EnumerationMode::AlmostPrecise)
+        .enumerate_outcomes_text("move 1", "move 1", EnumerationMode::DamageEndpoints)
         .unwrap();
     assert!(precise.len() > 2 && precise.len() <= 16);
     assert_eq!(almost.len(), 2);
@@ -133,7 +133,7 @@ fn pivot_stops_with_queue_intact_then_resumes() {
     b.choose_team(0, vec![0, 1]);
     b.choose_team(1, vec![0]);
     let out = b
-        .enumerate_outcomes_text("move 1", "move 1", EnumerationMode::AlmostPrecise)
+        .enumerate_outcomes_text("move 1", "move 1", EnumerationMode::DamageEndpoints)
         .unwrap();
     assert!(!out.is_empty());
     for o in out {
@@ -145,7 +145,7 @@ fn pivot_stops_with_queue_intact_then_resumes() {
         assert!(!o.battle.side_needs_choice(1));
         let next = o
             .battle
-            .enumerate_outcomes_text("switch 2", "", EnumerationMode::AlmostPrecise)
+            .enumerate_outcomes_text("switch 2", "", EnumerationMode::DamageEndpoints)
             .unwrap();
         assert!(next.iter().all(|x| x.battle.turn == b.turn + 1));
     }
@@ -158,7 +158,7 @@ fn multihit_uses_independent_damage_rolls() {
         .enumerate_outcomes_text("move 4", "move 1", EnumerationMode::Precise)
         .unwrap();
     let almost = b
-        .enumerate_outcomes_text("move 4", "move 1", EnumerationMode::AlmostPrecise)
+        .enumerate_outcomes_text("move 4", "move 1", EnumerationMode::DamageEndpoints)
         .unwrap();
     assert!(precise.len() > almost.len());
     assert!(almost.len() <= 4);
@@ -206,7 +206,7 @@ fn crit_matters_but_damage_roll_does_not_change_ko() {
     // ceil(2^32 / 24) raw draws satisfy the engine's chance(1, 24).
     let expected_ko = 178_956_971.0 / 4_294_967_296.0;
     let mut distributions = Vec::new();
-    for mode in [EnumerationMode::Precise, EnumerationMode::AlmostPrecise] {
+    for mode in [EnumerationMode::Precise, EnumerationMode::DamageEndpoints] {
         let out = b.enumerate_outcomes_text("move 1", "move 1", mode).unwrap();
         let mut ko = 0.0;
         let mut survives = 0.0;
@@ -233,7 +233,7 @@ fn crit_matters_but_damage_roll_does_not_change_ko() {
     assert!((distributions[0].0 - distributions[1].0).abs() < 1e-12);
     assert!((distributions[0].1 - distributions[1].1).abs() < 1e-12);
     println!(
-        "PASS: Precise and AlmostPrecise match for KO/survival probabilities (tolerance 1e-12)."
+        "PASS: Precise and DamageEndpoints match for KO/survival probabilities (tolerance 1e-12)."
     );
 }
 
@@ -282,7 +282,7 @@ fn accuracy_and_crits_keep_their_joint_probabilities() {
     let mut b = chance_battle(75, false, false);
     b.sides[1].mons[0].hp = 30;
     let crit = 178_956_971.0 / 4_294_967_296.0;
-    for mode in [EnumerationMode::Precise, EnumerationMode::AlmostPrecise] {
+    for mode in [EnumerationMode::Precise, EnumerationMode::DamageEndpoints] {
         let out = b.enumerate_outcomes_text("move 1", "move 2", mode).unwrap();
         let miss = mass(&out, |b| b.sides[1].mons[0].hp == 30);
         let ko = mass(&out, |b| b.ended && b.winner == Some(0));
@@ -303,7 +303,7 @@ fn lethal_speed_tie_splits_winner_probability_equally() {
     for side in &mut b.sides {
         side.mons[0].hp = 1;
     }
-    for mode in [EnumerationMode::Precise, EnumerationMode::AlmostPrecise] {
+    for mode in [EnumerationMode::Precise, EnumerationMode::DamageEndpoints] {
         let out = b.enumerate_outcomes_text("move 1", "move 1", mode).unwrap();
         assert!(out.iter().all(|o| o.battle.ended));
         let p1 = mass(&out, |b| b.winner == Some(0));
@@ -320,7 +320,7 @@ fn secondary_poison_probability_is_exact_in_both_modes() {
     let b = chance_battle(100, true, false);
     // ceil(0.30 * 2^32), matching random(100) < 30.
     let expected = 1_288_490_189.0 / 4_294_967_296.0;
-    for mode in [EnumerationMode::Precise, EnumerationMode::AlmostPrecise] {
+    for mode in [EnumerationMode::Precise, EnumerationMode::DamageEndpoints] {
         let out = b.enumerate_outcomes_text("move 1", "move 2", mode).unwrap();
         let poisoned = mass(&out, |b| b.sides[1].mons[0].status == Status::Psn);
         let healthy = mass(&out, |b| b.sides[1].mons[0].status == Status::None);
@@ -337,7 +337,7 @@ fn full_paralysis_branches_before_a_guaranteed_ko() {
     b.sides[0].mons[0].status = Status::Par;
     b.sides[0].mons[0].status_state = Status::Par;
     b.sides[1].mons[0].hp = 1;
-    for mode in [EnumerationMode::Precise, EnumerationMode::AlmostPrecise] {
+    for mode in [EnumerationMode::Precise, EnumerationMode::DamageEndpoints] {
         let out = b.enumerate_outcomes_text("move 1", "move 2", mode).unwrap();
         let blocked = mass(&out, |b| !b.ended && b.sides[1].mons[0].hp == 1);
         let ko = mass(&out, |b| b.ended && b.winner == Some(0));
@@ -351,7 +351,7 @@ fn full_paralysis_branches_before_a_guaranteed_ko() {
 fn pending_choice_and_reseeding_preserve_accuracy_crit_distribution() {
     let mut b = chance_battle(75, false, false);
     b.sides[1].mons[0].hp = 30;
-    for mode in [EnumerationMode::Precise, EnumerationMode::AlmostPrecise] {
+    for mode in [EnumerationMode::Precise, EnumerationMode::DamageEndpoints] {
         let expected = distribution(&b.enumerate_outcomes_text("move 1", "move 2", mode).unwrap());
         let mut pending = b.clone();
         pending.choose(0, "move 1").unwrap();
@@ -403,7 +403,7 @@ fn sampled_randomness_matches_enumerated_probabilities() {
             name: "accuracy+crit",
             battle: accuracy,
             choices: ["move 1", "move 2"],
-            mode: EnumerationMode::AlmostPrecise,
+            mode: EnumerationMode::DamageEndpoints,
             labels: &["miss", "normal hit", "critical KO"],
             classify: |b| {
                 if b.ended {
@@ -419,7 +419,7 @@ fn sampled_randomness_matches_enumerated_probabilities() {
             name: "speed tie",
             battle: tie,
             choices: ["move 1", "move 1"],
-            mode: EnumerationMode::AlmostPrecise,
+            mode: EnumerationMode::DamageEndpoints,
             labels: &["p1 wins", "p2 wins"],
             classify: |b| {
                 assert!(b.ended);
@@ -430,7 +430,7 @@ fn sampled_randomness_matches_enumerated_probabilities() {
             name: "secondary",
             battle: poison,
             choices: ["move 1", "move 2"],
-            mode: EnumerationMode::AlmostPrecise,
+            mode: EnumerationMode::DamageEndpoints,
             labels: &["poisoned", "healthy"],
             classify: |b| usize::from(b.sides[1].mons[0].status != Status::Psn),
         },
@@ -438,7 +438,7 @@ fn sampled_randomness_matches_enumerated_probabilities() {
             name: "paralysis",
             battle: paralysis,
             choices: ["move 1", "move 2"],
-            mode: EnumerationMode::AlmostPrecise,
+            mode: EnumerationMode::DamageEndpoints,
             labels: &["blocked", "KO"],
             classify: |b| usize::from(b.ended),
         },
@@ -469,7 +469,7 @@ fn sampled_randomness_matches_enumerated_probabilities() {
                 .enumerate_outcomes_text(
                     scenario.choices[0],
                     scenario.choices[1],
-                    EnumerationMode::AlmostPrecise,
+                    EnumerationMode::DamageEndpoints,
                 )
                 .unwrap();
             let approximate_ko = mass(&almost, |b| b.ended);
@@ -478,7 +478,7 @@ fn sampled_randomness_matches_enumerated_probabilities() {
             near(expected[0], crit + (1.0 - crit) * 6.0 / 16.0);
             assert!((approximate_ko - expected[0]).abs() > 0.1);
             println!(
-                "Damage threshold requires Precise: KO={:.9}; AlmostPrecise KO={approximate_ko:.9}",
+                "Damage threshold requires Precise: KO={:.9}; DamageEndpoints KO={approximate_ko:.9}",
                 expected[0]
             );
         }

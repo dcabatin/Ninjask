@@ -509,7 +509,7 @@ outcomes = battle.enumerate_outcomes("move 4, move 1", "move 4, move 3 2", Enume
 print(len(outcomes), round(sum(o.probability for o in outcomes), 9))  # 21 distinct outcomes, total 1.0
 try:
     battle.enumerate_outcomes(battle.legal_choices("p1")[0], battle.legal_choices("p2")[0])
-except ValueError as e:  # more chance paths than max_paths: raise it, use AlmostPrecise or sample
+except ValueError as e:  # more chance paths than max_paths: raise it, use DamageEndpoints or sample
     print(e)
 ```
 
@@ -524,11 +524,14 @@ queue. Team preview is not supported by this API. Invalid choices return an
 error (`ValueError` in Python).
 
 `Precise` exhaustively enumerates the integer outcomes of the existing 32-bit
-scaling rule, accumulating probabilities in floating point. `AlmostPrecise`
+scaling rule, accumulating probabilities in floating point. `DamageEndpoints`
 enumerates only the minimum and maximum damage-variance rolls, each with weight
 1/2, including confusion damage and each hit of a multi-hit move. All other
-chance events remain exhaustive. These endpoint weights approximate the damage
-distribution; they are not the actual probability of rolling either endpoint.
+chance events remain exhaustive. It is an approximation, not Showdown's
+distribution: the endpoint weights are not the probability of rolling either
+endpoint, and KO chances can be far off when a roll range straddles a KO (on
+"who faints this turn", up to 42 percentage points in one of 28 real states
+measured, though exact in most).
 
 Execution replays explicit decision paths on fresh clones and never calls a
 PRNG. Equivalent completed states are merged and their weights summed. There
@@ -539,7 +542,7 @@ at 33 µs a path) and fails with an error (`ValueError`) beyond that; the
 `_within` variants in Rust and `max_paths=` in Python set another budget. On
 40 mid-game states of real teams with random choices
 (`examples/validate_outcomes.rs`), Precise fit the default budget on 14 and
-AlmostPrecise on 22: endgames and turns with few attacks fit, others need a
+DamageEndpoints on 22: endgames and turns with few attacks fit, others need a
 larger budget or sampling. Where it finished, the enumeration was exact: none
 of 28,000 sampled resolutions of those turns fell outside it, and none of the
 turns' sampled distributions differed from it beyond sampling noise.

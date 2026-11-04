@@ -4,9 +4,9 @@
 //! `cargo run --release --example validate_outcomes -- <dex.json> <teams.txt> [states] [samples] [max_paths]`
 //!
 //! Per state: Precise outcomes and time (or "over" when the turn has more than `max_paths` chance
-//! paths, with the time per path), AlmostPrecise outcomes and time, sampled outcomes outside the
+//! paths, with the time per path), DamageEndpoints outcomes and time, sampled outcomes outside the
 //! enumeration (any is a bug), the total-variation distance from the sample beside its noise
-//! 99th percentile, and AlmostPrecise's distance from Precise on who has fainted.
+//! 99th percentile, and DamageEndpoints's distance from Precise on who has fainted.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -87,7 +87,7 @@ fn main() {
 
         let t = Instant::now();
         let almost =
-            b.enumerate_outcomes_within(&c[0], &c[1], EnumerationMode::AlmostPrecise, max_paths);
+            b.enumerate_outcomes_within(&c[0], &c[1], EnumerationMode::DamageEndpoints, max_paths);
         let ms_a = t.elapsed().as_secs_f64() * 1e3;
         almost_ms.push(ms_a);
         almost_over += almost.is_err() as usize;
@@ -166,7 +166,7 @@ fn main() {
         if tv > p99 {
             flagged += 1;
         }
-        // AlmostPrecise against Precise on who has fainted.
+        // DamageEndpoints against Precise on who has fainted.
         let mut fp: HashMap<Vec<bool>, f64> = HashMap::new();
         for o in &precise {
             *fp.entry(faints(&o.battle)).or_insert(0.0) += o.probability;
@@ -208,9 +208,9 @@ fn main() {
     );
     println!("states whose sampled distribution is farther from the enumeration than the noise 99th percentile: {flagged} of {} (expected about {:.1})", rows.len(), rows.len() as f64 * 0.01);
     println!("Precise: ms per enumeration median {pm:.2}, p90 {p90:.2}, max {pmax:.2}; outcomes median {om:.0}, p90 {o90:.0}, max {omax:.0}");
-    println!("AlmostPrecise (all {states} states): ms median {am:.2}, p90 {a90:.2}, max {amax:.2}; over the budget {almost_over}");
+    println!("DamageEndpoints (all {states} states): ms median {am:.2}, p90 {a90:.2}, max {amax:.2}; over the budget {almost_over}");
     println!("{samples} sampled resolutions: median {sm:.1} ms");
     println!(
-        "AlmostPrecise vs Precise, TV of who-faints: median {fm:.4}, p90 {f90:.4}, max {fmax:.4}"
+        "DamageEndpoints vs Precise, TV of who-faints: median {fm:.4}, p90 {f90:.4}, max {fmax:.4}"
     );
 }

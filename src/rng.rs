@@ -286,13 +286,13 @@ impl Rng {
         r
     }
 
-    /// Damage variance: only AlmostPrecise replaces the distribution by endpoints.
+    /// Damage variance: only DamageEndpoints replaces the distribution by endpoints.
     /// Delegation preserves ordinary play's draw count and caller trace.
     #[track_caller]
     pub fn random_damage(&mut self, n: u32) -> u32 {
         assert!(n > 0);
         if let Gen::Precise(state) = &mut self.gen {
-            if state.mode == EnumerationMode::AlmostPrecise {
+            if state.mode == EnumerationMode::DamageEndpoints {
                 let (selected, _) =
                     state.choose(DecisionKind::Damage(n), if n == 1 { 1 } else { 2 });
                 return if selected == 0 { 0 } else { n - 1 };
@@ -451,7 +451,7 @@ mod enumeration_tests {
     }
 
     #[test]
-    fn almost_precise_never_calls_a_prng() {
+    fn damage_endpoints_never_calls_a_prng() {
         use crate::{Battle, Dex};
         use std::sync::Arc;
         let dex =
@@ -473,7 +473,7 @@ mod enumeration_tests {
         // Tripwires are in the actual xoshiro, ChaCha and seed-expansion code,
         // so even accidentally using a fresh or separate RNG fails this test.
         let _guard = NoPrng::enter();
-        let helper_paths = outcomes(EnumerationMode::AlmostPrecise, |r| {
+        let helper_paths = outcomes(EnumerationMode::DamageEndpoints, |r| {
             let mut shuffled = [0, 1, 2];
             r.shuffle(&mut shuffled, 0, 3);
             (
@@ -490,7 +490,7 @@ mod enumeration_tests {
             battle.rng = rng;
             for choice in ["move 1", "move 2"] {
                 let result = battle
-                    .enumerate_outcomes_text(choice, "move 1", EnumerationMode::AlmostPrecise)
+                    .enumerate_outcomes_text(choice, "move 1", EnumerationMode::DamageEndpoints)
                     .unwrap();
                 assert!(!result.is_empty());
                 assert!((result.iter().map(|o| o.probability).sum::<f64>() - 1.0).abs() < 1e-12);
@@ -555,7 +555,7 @@ mod enumeration_tests {
             precise,
             (0..16).map(|n| (n, 1.0 / 16.0)).collect::<Vec<_>>()
         );
-        let mode = EnumerationMode::AlmostPrecise;
+        let mode = EnumerationMode::DamageEndpoints;
         assert_eq!(
             outcomes(mode, |r| r.random_damage(16)),
             vec![(0, 0.5), (15, 0.5)]
@@ -575,7 +575,7 @@ mod enumeration_tests {
     }
     #[test]
     fn shuffle_enumerates_all_permutations() {
-        let out = outcomes(EnumerationMode::AlmostPrecise, |r| {
+        let out = outcomes(EnumerationMode::DamageEndpoints, |r| {
             let mut a = [0, 1, 2];
             r.shuffle(&mut a, 0, 3);
             a

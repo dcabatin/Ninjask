@@ -66,13 +66,13 @@ fn le_bytes<'py, const N: usize, T: Copy>(
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PyEnumerationMode {
     Precise,
-    AlmostPrecise,
+    DamageEndpoints,
 }
 impl From<PyEnumerationMode> for crate::EnumerationMode {
     fn from(m: PyEnumerationMode) -> Self {
         match m {
             PyEnumerationMode::Precise => Self::Precise,
-            PyEnumerationMode::AlmostPrecise => Self::AlmostPrecise,
+            PyEnumerationMode::DamageEndpoints => Self::DamageEndpoints,
         }
     }
 }

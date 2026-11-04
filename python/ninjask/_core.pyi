@@ -20,8 +20,9 @@ class EnumerationMode:
 
     Precise: EnumerationMode
     """All 16 damage rolls."""
-    AlmostPrecise: EnumerationMode
-    """Only the lowest and highest roll, half each: an approximation."""
+    DamageEndpoints: EnumerationMode
+    """An approximation: each damage roll replaced by its lowest and highest
+    value, half each (KO chances can be badly off when a roll range straddles a KO)."""
 
 @final
 class BattleStateKey:
