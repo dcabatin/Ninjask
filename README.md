@@ -480,7 +480,9 @@ package to take its classes from it:
 everything in the package, the checks included, uses them. `ninjask._core` is
 used only when no module is declared, so the package's Python files are all
 you need besides your own module (for example, `python/` on your project's
-path).
+path), plus the bundled formats: a checkout's `python/ninjask/data/` is
+empty until `scripts/bundle_data.sh` fills it (or copy it from the wheel), and
+without it `ninjask.dex()` needs the checkout's Showdown to export a format.
 
 ## Documentation
 
