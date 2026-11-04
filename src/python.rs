@@ -589,10 +589,188 @@ impl PyTracker {
 }
 
 /// Add the engine's classes to `m`.
+/// Many battles stepped together (`ninjask::batch`), for training: both
+/// players' trackers are kept in Rust, `observe` reports every pending
+/// decision as numeric buffers, `step` applies one choice to each, and both
+/// run the battles in parallel with the GIL released.
+#[pyclass(name = "Batch", module = "ninjask")]
+pub struct PyBatch {
+    pub inner: crate::batch::Batch,
+    /// (battle, side) of each decision the last `observe` reported.
+    pending: Vec<(usize, usize)>,
+}
+
+#[pymethods]
+impl PyBatch {
+    /// `n` empty battle slots for `dex`'s format; `reset` starts a battle.
+    #[new]
+    fn new(dex: &PyDex, n: usize) -> PyBatch {
+        PyBatch {
+            inner: crate::batch::Batch::new(dex.inner.clone(), n),
+            pending: Vec::new(),
+        }
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// The turn after which a battle stops as a draw (default 150).
+    #[getter]
+    fn turn_limit(&self) -> u32 {
+        self.inner.turn_limit
+    }
+
+    #[setter]
+    fn set_turn_limit(&mut self, turns: u32) {
+        self.inner.turn_limit = turns;
+    }
+
+    /// Start a battle in slot `i` from two packed teams. Raises ValueError
+    /// on a bad team or slot.
+    fn reset(&mut self, i: usize, team1: &str, team2: &str, seed: u64) -> PyResult<()> {
+        self.inner
+            .reset(i, [team1, team2], seed)
+            .map_err(PyValueError::new_err)
+    }
+
+    /// Every pending decision, as a dict of little-endian bytes for
+    /// `numpy.frombuffer` (shapes for `m` decisions and `r` legal choices
+    /// in all):
+    ///
+    /// - `who`: uint32 (m, 2), the battle and side (0 is p1) deciding;
+    /// - `preview`: uint8 (m,), 1 for a team preview decision;
+    /// - `obs`: float32 (m, OBS_LEN), each player's `Tracker.encode()`;
+    /// - `ids`: int16 (m, IDS_LEN), each player's `Tracker.encode_ids()`;
+    /// - `actions`: int8 (r, ACTION_WIDTH), the legal choices of every
+    ///   decision in turn, as `Battle.legal_actions` (padded with 0);
+    /// - `offsets`: uint32 (m + 1,), decision k's choices are rows
+    ///   `offsets[k]:offsets[k + 1]`;
+    ///
+    /// and `n`, the number of decisions. Battles that are over report none.
+    fn observe<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let inner = &mut self.inner;
+        let o = py.detach(|| inner.observe());
+        self.pending = o
+            .who
+            .chunks(2)
+            .map(|w| (w[0] as usize, w[1] as usize))
+            .collect();
+        let d = pyo3::types::PyDict::new(py);
+        d.set_item("n", self.pending.len())?;
+        d.set_item("who", le_bytes(py, &o.who, |x: u32| x.to_le_bytes()))?;
+        d.set_item("preview", pyo3::types::PyBytes::new(py, &o.preview))?;
+        d.set_item("obs", le_bytes(py, &o.obs, |x: f32| x.to_le_bytes()))?;
+        d.set_item("ids", le_bytes(py, &o.ids, |x: i16| x.to_le_bytes()))?;
+        d.set_item("actions", le_bytes(py, &o.actions, |x: i8| x.to_le_bytes()))?;
+        d.set_item(
+            "offsets",
+            le_bytes(py, &o.offsets, |x: u32| x.to_le_bytes()),
+        )?;
+        Ok(d)
+    }
+
+    /// Apply one choice to each decision the last `observe` reported:
+    /// `choices[k]` indexes decision k's legal choices. Returns uint8 bytes,
+    /// one per decision: bit 0 set when Showdown refused the choice (the
+    /// decision stays pending with what the refusal revealed), bit 1 when
+    /// the battle ended. Raises ValueError on a wrong count or index.
+    fn step<'py>(
+        &mut self,
+        py: Python<'py>,
+        choices: Vec<usize>,
+    ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        if choices.len() != self.pending.len() {
+            return Err(PyValueError::new_err(format!(
+                "{} choices for {} pending decisions",
+                choices.len(),
+                self.pending.len()
+            )));
+        }
+        let picks: Vec<(usize, usize, usize)> = self
+            .pending
+            .iter()
+            .zip(&choices)
+            .map(|(&(i, s), &c)| (i, s, c))
+            .collect();
+        let inner = &mut self.inner;
+        let res = py
+            .detach(|| inner.step(&picks))
+            .map_err(PyValueError::new_err)?;
+        self.pending.clear();
+        let flags: Vec<u8> = res
+            .iter()
+            .map(|r| r.refused as u8 | (r.ended as u8) << 1)
+            .collect();
+        Ok(pyo3::types::PyBytes::new(py, &flags))
+    }
+
+    /// Start several battles: `reset(slots[k], teams1[k], teams2[k],
+    /// seeds[k])` for each k, built in parallel. Raises ValueError (and
+    /// starts none) on a bad team or slot, or lists of different lengths.
+    fn reset_many(
+        &mut self,
+        py: Python<'_>,
+        slots: Vec<usize>,
+        teams1: Vec<String>,
+        teams2: Vec<String>,
+        seeds: Vec<u64>,
+    ) -> PyResult<()> {
+        let n = slots.len();
+        if teams1.len() != n || teams2.len() != n || seeds.len() != n {
+            return Err(PyValueError::new_err(
+                "slots, teams1, teams2 and seeds differ in length",
+            ));
+        }
+        let starts: Vec<(usize, [&str; 2], u64)> = (0..n)
+            .map(|k| (slots[k], [teams1[k].as_str(), teams2[k].as_str()], seeds[k]))
+            .collect();
+        let inner = &mut self.inner;
+        py.detach(|| inner.reset_many(&starts))
+            .map_err(PyValueError::new_err)
+    }
+
+    /// uint8 bytes, one per slot: 1 when its battle is over (`done`).
+    fn dones<'py>(&self, py: Python<'py>) -> Bound<'py, pyo3::types::PyBytes> {
+        let d: Vec<u8> = self.inner.dones().into_iter().map(u8::from).collect();
+        pyo3::types::PyBytes::new(py, &d)
+    }
+
+    /// Whether battle `i` is over (ended, past the turn limit, or never
+    /// started).
+    fn done(&self, i: usize) -> bool {
+        self.inner.done(i)
+    }
+
+    /// The winning side of battle `i` ("p1" or "p2"), or None (a draw, a
+    /// battle still running or stopped at the turn limit).
+    fn winner(&self, i: usize) -> Option<&'static str> {
+        self.inner
+            .battle(i)?
+            .winner
+            .map(|s| if s == 0 { "p1" } else { "p2" })
+    }
+
+    /// The turn of battle `i` (0 before it starts).
+    fn turn(&self, i: usize) -> u32 {
+        self.inner.battle(i).map_or(0, |b| b.turn)
+    }
+
+    /// A copy of battle `i`, to inspect or search from.
+    fn battle(&self, i: usize) -> PyResult<PyBattle> {
+        self.inner
+            .battle(i)
+            .map(|b| PyBattle { inner: b.clone() })
+            .ok_or_else(|| PyValueError::new_err(format!("no battle in slot {i}")))
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDex>()?;
     m.add_class::<PyBattle>()?;
     m.add_class::<PyTracker>()?;
+    m.add_class::<PyBatch>()?;
+    m.add("ACTION_WIDTH", crate::batch::ACTION_WIDTH)?;
     m.add("OBS_LEN", crate::encode::OBS_LEN)?;
     m.add("IDS_LEN", crate::encode::IDS_LEN)?;
     m.add("ACTION_FIELDS", crate::encode::ACTION_FIELDS)?;

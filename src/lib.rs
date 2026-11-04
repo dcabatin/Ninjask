@@ -45,6 +45,7 @@ macro_rules! log_line {
 
 pub mod abilities;
 pub mod approx;
+pub mod batch;
 pub mod battle;
 pub mod boosts;
 pub mod calc;
