@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+### Added
+
+- **Experimental:** Rust and Python outcome enumeration for search and regret minimization,
+  with exhaustive chance probabilities or a damage-endpoint approximation,
+  and hashable full battle-state keys.
+  (dcabatin/Ninjask#8, by CalebBrody.) Each call explores at most
+  `max_paths` chance paths (`DEFAULT_MAX_PATHS`, 20,000, about 0.7 s) and
+  raises an error beyond that instead of running for minutes: on 40
+  mid-game states of real teams, Precise fit the default budget on 14 and
+  DamageEndpoints on 22 (`examples/validate_outcomes.rs`). Where it finished
+  it was exact against 28,000 sampled resolutions. The damage-endpoint mode
+  is `EnumerationMode.DamageEndpoints` (an approximation). Being
+  experimental, the API may change in any release.
+- **A native interface for training**, with no JSON and no strings in the
+  loop:
+  - `Battle.legal_choices(side)` lists the choices the side's request
+    offers, in `ninjask.choices`' order, from the player's view: a hidden
+    disable or trap never shapes the list, so a listed choice can be
+    refused, as in Showdown. `.legal_actions(side)` gives them as int8 rows
+    (`action_width(side)` per choice), and `.choose_index(side, i)` submits
+    one by position.
+  - `Tracker.encode()` and `.encode_ids()` give a player's view as float32
+    and int16 bytes for `numpy.frombuffer` (layouts in `src/encode.rs`;
+    `ninjask.OBS_LEN`, `IDS_LEN`, `ACTION_FIELDS`); `Dex.vocab()` gives
+    the embedding-table sizes.
+  - `ninjask.Batch(dex, n)` steps `n` battles together on all cores with
+    the GIL released: `observe()` reports every pending decision as
+    numeric buffers, and `step()` applies one choice index to each (every
+    index is checked before any is applied). In Rust,
+    `ninjask::batch::Batch`, `Battle::player_choices` and
+    `for_each_player_choice`. About 700 random games/s with every decision
+    observed on one core of a 4-vCPU VM, and 1,300 on four; a loop through
+    the JSON requests plays about 45.
+- `research/`: what trading parity for speed would buy (about 1.2 times
+  in the engine, for real changes to play) and how much engine speed
+  matters in training. The research-only switches behind it
+  (`ninjask::approx`, feature `approx`) are off in every release.
+
+### Changed
+
+- Enumerating joint choices and team-preview orders no longer allocates
+  per choice; the internal random player is unchanged, and so is the
+  fingerprint.
+
 ## 0.3.0 (2026-11-04)
 
 Two fixes found by checking the engine on inputs nobody chose (games under

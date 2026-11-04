@@ -6,6 +6,11 @@
 //! Each function names the Showdown code it ports. Pokémon are addressed by
 //! (side, index into `side.mons`); index == position for active Pokémon.
 
+mod enumerate;
+pub use enumerate::DEFAULT_MAX_PATHS;
+mod state_key;
+pub use state_key::BattleStateKey;
+
 mod bookkeeping;
 mod choices;
 pub mod log;
@@ -917,10 +922,12 @@ impl Battle {
         }
 
         // Gen 8+: re-sort remaining moves by current speed.
-        if matches!(
-            self.queue.front().map(|a| a.kind),
-            Some(ActionKind::Move { .. })
-        ) {
+        if !crate::approx::on(crate::approx::STATIC_ORDER)
+            && matches!(
+                self.queue.front().map(|a| a.kind),
+                Some(ActionKind::Move { .. })
+            )
+        {
             self.update_speed();
             let mut rest = std::mem::take(&mut self.queue);
             // Resolving queued actions changes no ability and no active

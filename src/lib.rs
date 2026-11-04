@@ -44,15 +44,19 @@ macro_rules! log_line {
 }
 
 pub mod abilities;
+pub mod approx;
+pub mod batch;
 pub mod battle;
 pub mod boosts;
 pub mod calc;
 pub mod conditions;
 pub mod dex;
+pub mod encode;
 pub mod events;
 pub mod items;
 pub mod kinds;
 pub mod moves;
+pub mod outcome;
 pub mod projection;
 pub mod rng;
 pub mod state;
@@ -65,3 +69,6 @@ pub mod python;
 
 pub use battle::Battle;
 pub use dex::Dex;
+
+pub use battle::{BattleStateKey, DEFAULT_MAX_PATHS};
+pub use outcome::{EnumerationError, EnumerationMode, Outcome};

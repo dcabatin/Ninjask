@@ -42,6 +42,9 @@ agent the wrong game. Ninjask is meant to be both:
   supported. Nothing is silently approximated: `Dex.team_problems`
   names anything a team uses that the engine does not simulate.
 - **Built for agents.** Besides the battle itself:
+  - a **batched training interface** (`ninjask.Batch`): many battles on all
+    cores, with each player's observation and legal choices handed over as
+    numeric buffers, at about 1,300 random games per second;
   - a per-player **tracker** that builds what one side knows from the
     protocol, and reads Showdown's live logs the same way;
   - **worlds**: battles consistent with one player's view, with the foe's
@@ -122,6 +125,45 @@ touching `b`. `b.damage("p1a", move_id, "p2b")` runs the damage calculation
 `Battle.reference(d, team1, team2, "sodium," + "0" * 64)` runs a battle in
 reference mode, seeded like Showdown (a `sodium,<hex>` seed string), so it
 reproduces a Showdown game draw for draw.
+
+### Training at scale
+
+For training, `ninjask.Batch` steps many battles at once, in parallel, and
+hands over every pending decision as numeric buffers: each player's
+observation (only what that player knows) and its legal choices, ready for
+`numpy.frombuffer`. One call reports the decisions and one applies a choice
+index to each:
+
+```python
+import numpy as np
+import ninjask
+
+d = ninjask.dex("gen9championsvgc2026regmc")
+teams = ninjask.verification_teams()
+n = 64
+batch = ninjask.Batch(d, n)  # 64 battles, stepped on all cores
+batch.reset_many(list(range(n)), [teams[i % 4] for i in range(n)], [teams[(i + 1) % 4] for i in range(n)], list(range(n)))
+rng = np.random.default_rng(0)
+while True:
+    o = batch.observe()  # every pending decision, both sides of every battle
+    if o["n"] == 0:
+        break
+    obs = np.frombuffer(o["obs"], np.float32).reshape(o["n"], ninjask.OBS_LEN)  # what each player sees
+    offsets = np.frombuffer(o["offsets"], np.uint32).astype(np.int64)
+    counts = offsets[1:] - offsets[:-1]  # legal choices per decision
+    picks = (rng.random(o["n"]) * counts).astype(np.int64)  # your policy goes here
+    batch.step(picks.tolist())
+print([batch.winner(i) for i in range(4)])  # "p1", "p2" or None
+```
+
+On one core of a 4-vCPU cloud VM this plays about 700 random games per second
+with every decision observed, and about 1,300 on four cores; a loop through
+the JSON requests above plays about 45. `Battle.legal_choices(side)`,
+`.legal_actions(side)`, `.choose_index(side, i)` and `Tracker.encode()` give the
+same interface for a single battle. Choices are listed from the player's
+view, so, as in Showdown, one can be refused for something hidden (a foe's
+Imprison, a trap): the decision then stays pending, with what the refusal
+revealed.
 
 ### Rust
 
@@ -249,7 +291,8 @@ harness on a few games.
 and Python API and changes behaviour only to match the pinned Showdown more
 closely; every such change is in the CHANGELOG. A minor release (0.4) may
 change the API or move the Showdown pin, and the CHANGELOG says what to
-update.
+update. Features marked experimental (today, outcome enumeration) are
+outside this promise and may change in any release.
 
 ## Working from source
 
@@ -391,13 +434,20 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
 
 - `Dex.load(path)`, `.team_problems(packed)`, `.move_support(id)`,
   `.species_ids()`, `.generic_moves()`, `.implemented_moves()`,
-  `.supported_abilities()`, `.supported_items()`.
+  `.supported_abilities()`, `.supported_items()`, `.vocab()` (embedding-table
+  sizes for `Tracker.encode_ids()`).
 - `Battle(dex, team1, team2, seed)`, `Battle.reference(...)`,
   `Battle.from_projection(...)`, `.request(side)`, `.needs_choice(side)`,
   `.choose(side, choice)` (raises `ValueError` on an illegal choice, as
   Showdown rejects it), `.log(viewer, start)`, `.log_len()`, `.set_logging(on)`,
   `.projection()`, `.copy()`, `.reseed(seed)`, `.ended`, `.winner` (the
   player's name), `.winner_side` (`"p1"`, `"p2"` or `None`), `.turn`.
+- `Battle.legal_choices(side)`: the choices the side's request offers, in
+  Showdown syntax and in `ninjask.choices`' order, built without the
+  request; `.legal_actions(side)`: the same as int8 rows of
+  `.action_width(side)` values (per slot: kind 0 pass, 1 move, 2 switch,
+  3 Struggle or recharge; move slot or team position; target; Mega
+  Evolution; at team preview, the order sent); `.choose_index(side, i)`.
 - `Tracker(dex, side)` with `.feed(lines)`, `.feed_request(json)`,
   `.feed_battle(battle)`, `.view()` and `.world(assumptions=None, seed=0)`
   (a `Battle`; assumptions as JSON, see `world::Assumptions::from_json`).
@@ -405,6 +455,16 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
   as its request would; everything else comes from the protocol lines, so in
   self-play feed both: `t.feed(b.log(side, seen)); t.feed_battle(b)`.
   `view()` is JSON text whose `sides` are always in the order p1, p2.
+  `.encode()` is the view as `ninjask.OBS_LEN` float32 values (own side
+  first), and `.encode_ids()` its species, items, abilities and moves as
+  `ninjask.IDS_LEN` int16 values (0 when unknown), as bytes for
+  `numpy.frombuffer`; layouts in `src/encode.rs`.
+- `Batch(dex, n)`: `n` battles with both players' trackers, stepped in
+  parallel with the GIL released. `.reset(i, team1, team2, seed)`,
+  `.reset_many(...)`, `.observe()` (every pending decision: who, the
+  observation and ids, the legal actions and their offsets),
+  `.step(choices)` (one index per decision; all checked before any is
+  applied), `.dones()`, `.winner(i)`, `.turn(i)`, `.battle(i)` (a copy).
 - `Battle.damage(attacker, move, target)` (slots like "p1a"; JSON),
   `.order(a, plan_a, b, plan_b)` (a plan is a move id, "switch" or
   "priority:N"; returns `(first, tie)`) and `.speeds()`.
@@ -418,16 +478,100 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
 - `refsim`: a client for the Showdown reference server (`RefSim`, `Battle`).
 - `choices`, `policy`, `play`, `verify`, `tracker_check`: legal-choice
   enumeration, the policy interface, game loops for either simulator, and the
-  distribution and tracker checks. The legal choices for a request (as a
-  dict) are `choices.team_preview_choices(request)` when
-  `request.get("teamPreview")`, else
-  `choices.joint_choices(request, game_type="doubles")`. A choice from that
-  list can still be rejected because of something hidden (a trap or a disable), so keep
-  the retry loop of the quick start.
+  distribution and tracker checks. `choices.joint_choices(request,
+  game_type="doubles")` (and `team_preview_choices`) list the legal choices
+  from a request's JSON, as Showdown's own bots would;
+  `Battle.legal_choices` gives the same list without the JSON. A choice
+  from either can still be refused because of something hidden (a trap or
+  a disable), so keep the retry loop of the quick start.
 - `paths`: where Showdown and generated data live. Defaults are inside the
   checkout (`third_party/`, `data/derived/`); override with `NINJASK_HOME`,
   `NINJASK_SHOWDOWN` and `NINJASK_DATA`. `NINJASK_POOL` sets the default team
   pool of the checks.
+
+## Enumerating chance outcomes (experimental)
+
+**Experimental:** exact, but too slow for most full turns (see the budget
+below), and its API may change in any release, including a patch, as a
+faster design replaces it.
+
+`Battle::enumerate_outcomes(&choice_p1, &choice_p2, mode)` accepts the existing
+structured side choices (`&[SlotChoice]`) and returns
+`Result<Vec<Outcome>, EnumerationError>`. Each outcome contains `probability`
+(`f64`) and a cloned `battle`. Python uses the existing choice-string syntax:
+
+```python
+import ninjask
+from ninjask import EnumerationMode
+
+d = ninjask.dex("gen9championsvgc2026regmc")
+team1, team2 = ninjask.verification_teams()[:2]
+battle = ninjask.Battle(d, team1, team2, seed=1)
+battle.choose("p1", "team 1234")
+battle.choose("p2", "team 1234")
+# p1: Protect and Psychic Terrain; p2: Protect, and Throat Chop at p1's second Pokémon
+outcomes = battle.enumerate_outcomes("move 4, move 1", "move 4, move 3 2", EnumerationMode.Precise)
+print(len(outcomes), round(sum(o.probability for o in outcomes), 9))  # 21 distinct outcomes, total 1.0
+try:
+    battle.enumerate_outcomes(battle.legal_choices("p1")[0], battle.legal_choices("p2")[0])
+except ValueError as e:  # more chance paths than max_paths: raise it, use DamageEndpoints or sample
+    print(e)
+```
+
+An expected value over the outcomes is then
+`sum(o.probability * evaluate(o.battle) for o in outcomes)`.
+
+Enumeration preserves the input and any already-submitted choices. Supply an
+empty choice (`&[]` in Rust, `""` in Python) for a side that does not need one.
+Execution stops at the next player decision request or battle end, including
+mid-turn pivot/replacement requests; the returned battles preserve the remaining
+queue. Team preview is not supported by this API. Invalid choices return an
+error (`ValueError` in Python).
+
+`Precise` exhaustively enumerates the integer outcomes of the existing 32-bit
+scaling rule, accumulating probabilities in floating point. `DamageEndpoints`
+enumerates only the minimum and maximum damage-variance rolls, each with weight
+1/2, including confusion damage and each hit of a multi-hit move. All other
+chance events remain exhaustive. It is an approximation, not Showdown's
+distribution: the endpoint weights are not the probability of rolling either
+endpoint, and KO chances can be far off when a roll range straddles a KO (on
+"who faints this turn", up to 42 percentage points in one of 28 real states
+measured, though exact in most).
+
+Execution replays explicit decision paths on fresh clones and never calls a
+PRNG. Equivalent completed states are merged and their weights summed. There
+is no sampling, pruning or silent truncation, but the number of paths grows
+with every hit (accuracy, critical hit, damage roll), so each call explores at
+most `max_paths` of them (`ninjask::DEFAULT_MAX_PATHS`, 20,000, about 0.7 s
+at 33 µs a path) and fails with an error (`ValueError`) beyond that; the
+`_within` variants in Rust and `max_paths=` in Python set another budget. On
+40 mid-game states of real teams with random choices
+(`examples/validate_outcomes.rs`), Precise fit the default budget on 14 and
+DamageEndpoints on 22: endgames and turns with few attacks fit, others need a
+larger budget or sampling. Where it finished, the enumeration was exact: none
+of 28,000 sampled resolutions of those turns fell outside it, and none of the
+turns' sampled distributions differed from it beyond sampling noise.
+Returned battles retain the input RNG snapshot for subsequent ordinary play
+(enumeration itself is independent of it), so reseed an outcome
+(`Battle.reseed`) before sampling forward from several of them, or they draw
+the same numbers.
+
+`battle.state_key()` creates an immutable, hashable `BattleStateKey` containing
+full future-relevant simulator state, including pending choices and queued
+actions. Keys exclude logs, RNG state and diagnostics, and are scoped to the
+same shared Dex allocation (independently loaded dexes stay distinct). Merged
+outcomes retain the first representative battle's logs and diagnostics, not a
+history of every contributing path. These keys are not player information-set
+keys for imperfect-information training. Python `Outcome.battle` returns an
+independent copy, so modifying it cannot change the stored outcome.
+
+
+Compare enumeration modes with `cargo run --release --example bench_outcomes`.
+It uses the self-contained enumeration test fixture: no damage, one hit, a
+two-hit move, and both players attacking. Setup is excluded, logging is off,
+and timings are medians of seven alternating batches. Output includes merged
+state counts. These synthetic singles scenarios isolate damage branching;
+measure your training positions separately before projecting throughput.
 
 ## Repository layout
 

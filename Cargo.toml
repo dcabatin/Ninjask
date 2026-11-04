@@ -24,6 +24,9 @@ default = []
 # The Python classes and `python::register`, for a crate that builds its own
 # extension module around them (README, "Embedding in another extension").
 python = ["dep:pyo3"]
+# Research switches that trade parity for speed (src/approx.rs); never on
+# in a release.
+approx = []
 # The `ninjask._core` extension module itself (pyproject.toml), built for
 # the stable ABI so one wheel serves CPython 3.12 and every later version.
 python-module = ["python", "pyo3/abi3-py312"]
@@ -41,3 +44,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 debug = 1
+
+[[example]]
+name = "approx_frontier"
+required-features = ["approx"]

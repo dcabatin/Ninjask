@@ -1,0 +1,3 @@
+threads 1, 256 battles: 6012 games, 159091 decisions in 8.43 s = 713 games/s, 18865 decisions/s; digest 9ec7b1b3a8280548
+threads 2, 256 battles: 6012 games, 159091 decisions in 4.83 s = 1245 games/s, 32934 decisions/s; digest 9ec7b1b3a8280548
+threads 4, 256 battles: 6012 games, 159091 decisions in 4.36 s = 1380 games/s, 36514 decisions/s; digest 9ec7b1b3a8280548

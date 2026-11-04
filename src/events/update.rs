@@ -87,6 +87,9 @@ impl Battle {
     /// Exchange).
     #[track_caller]
     pub(crate) fn run_update(&mut self) {
+        if crate::approx::on(crate::approx::SKIP_UPDATE) {
+            return;
+        }
         // Usually no handler can act: then only the order's draws (and its
         // trace) matter, and without a speed tie it makes none.
         // One pass over the active Pokémon: whether a handler may act, and

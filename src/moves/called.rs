@@ -8,7 +8,7 @@ use crate::kinds::ItemKind;
 use crate::state::*;
 
 /// A move called by another (`useMove` with the caller as `sourceEffect`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Call {
     pub user: MonRef,
     pub id: MoveId,

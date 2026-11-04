@@ -1,0 +1,21 @@
+400 games, 4210 turns, 10848 decisions, observations on: 8.85 s = 45 games/s, 1226 decisions/s
+  observation: view() + json.loads      55.1%    449.5 us/call  (10848 calls)
+  legal choices (Python)                19.7%    160.4 us/call  (10868 calls)
+  request() (Rust builds JSON)          12.1%     98.5 us/call  (10868 calls)
+  json.loads(request)                    4.8%     38.8 us/call  (10868 calls)
+  choose() (parse + engine step)         3.8%     30.7 us/call  (10868 calls)
+  observation: log + Tracker feed        2.8%     23.1 us/call  (10848 calls)
+  setup (Battle, Tracker)                0.7%    146.5 us/call  (400 calls)
+  other Python (loop, rng.choice)        1.1%
+
+400 games, 4210 turns, 10848 decisions, observations off: 3.26 s = 123 games/s, 3329 decisions/s
+  legal choices (Python)                48.2%    144.4 us/call  (10868 calls)
+  request() (Rust builds JSON)          30.6%     91.9 us/call  (10868 calls)
+  json.loads(request)                   12.6%     37.9 us/call  (10868 calls)
+  choose() (parse + engine step)         5.3%     15.9 us/call  (10868 calls)
+  setup (Battle, Tracker)                1.3%    105.9 us/call  (400 calls)
+  other Python (loop, rng.choice)        1.9%
+
+=== reference: the same random games played entirely in Rust (examples/bench, logging off and on)
+20000 games, 199358 turns, 476485 decisions in 3.08s: 6499 games/s, 64783 turns/s (one thread)
+20000 games, 199358 turns, 476485 decisions in 5.32s: 3763 games/s, 37507 turns/s (one thread)

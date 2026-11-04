@@ -1,0 +1,4 @@
+=== fingerprint built with --features approx, all switches off (must be 6e2f85907f97e4e9)
+fingerprint 6e2f85907f97e4e9
+=== default build
+fingerprint 6e2f85907f97e4e9

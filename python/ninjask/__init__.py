@@ -19,11 +19,35 @@ from typing import TYPE_CHECKING
 from ninjask._extension import module as _compiled
 
 if TYPE_CHECKING:
-    from ninjask._core import Battle, Dex, Tracker
+    from ninjask._core import (
+        ACTION_FIELDS,
+        ACTION_WIDTH,
+        DEFAULT_MAX_PATHS,
+        IDS_LEN,
+        OBS_LEN,
+        Batch,
+        Battle,
+        BattleStateKey,
+        Dex,
+        EnumerationMode,
+        Outcome,
+        Tracker,
+    )
 else:
     Dex = _compiled.Dex
     Battle = _compiled.Battle
     Tracker = _compiled.Tracker
+    Batch = _compiled.Batch
+    # Layouts of Tracker.encode(), encode_ids(), Battle.legal_actions() and
+    # Batch.observe() (ninjask::encode).
+    OBS_LEN = _compiled.OBS_LEN
+    IDS_LEN = _compiled.IDS_LEN
+    ACTION_FIELDS = _compiled.ACTION_FIELDS
+    ACTION_WIDTH = _compiled.ACTION_WIDTH
+    DEFAULT_MAX_PATHS = _compiled.DEFAULT_MAX_PATHS
+    Outcome = _compiled.Outcome
+    EnumerationMode = _compiled.EnumerationMode
+    BattleStateKey = _compiled.BattleStateKey
 
 from ninjask.format import export_path, load  # noqa: E402
 from ninjask.ids import to_id  # noqa: E402
@@ -31,11 +55,20 @@ from ninjask.paths import FIXTURE_POOL, TEAMS_DIR  # noqa: E402
 from ninjask.policy import Policy  # noqa: E402
 
 __all__ = [
+    "ACTION_FIELDS",
+    "ACTION_WIDTH",
+    "Batch",
     "Battle",
+    "BattleStateKey",
+    "DEFAULT_MAX_PATHS",
+    "EnumerationMode",
     "Dex",
     "EngineGameResult",
     "FIXTURE_POOL",
+    "IDS_LEN",
     "MAX_RETRIES",
+    "OBS_LEN",
+    "Outcome",
     "Policy",
     "TEAMS_DIR",
     "TURN_LIMIT",

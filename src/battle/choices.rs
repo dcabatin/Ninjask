@@ -626,9 +626,24 @@ impl Battle {
     }
 
     /// Legal options for one active slot of a side, ignoring the other slot.
+    /// They are what Showdown accepts, so they can reflect what the player
+    /// does not know (a foe's unseen Imprison, a hidden trap); see
+    /// [`Battle::player_slot_options`] for the player's view.
     pub fn slot_options(&self, s: usize, slot: usize) -> Vec<SlotChoice> {
         let mut out = Vec::with_capacity(self.slot_options_bound(s, slot));
-        self.slot_options_with(s, slot, &mut |c| out.push(c));
+        self.slot_options_with::<false>(s, slot, &mut |c| out.push(c));
+        out
+    }
+
+    /// The options one slot's request offers its player: what
+    /// `python/ninjask/choices.py` lists from the request, without building
+    /// it. A move is left out only when the request shows it disabled, and
+    /// switches only when the request shows the Pokémon trapped, so nothing
+    /// the player can't see shapes the list; a listed option can then be
+    /// refused, as in Showdown, and the refusal reveals why.
+    pub fn player_slot_options(&self, s: usize, slot: usize) -> Vec<SlotChoice> {
+        let mut out = Vec::with_capacity(self.slot_options_bound(s, slot));
+        self.slot_options_with::<true>(s, slot, &mut |c| out.push(c));
         out
     }
 
@@ -641,8 +656,14 @@ impl Battle {
         moves * 2 * (2 * side.n_active) + side.mons.len() + 1
     }
 
-    /// `slot_options`, handing each option to `push` in order.
-    fn slot_options_with(&self, s: usize, slot: usize, push: &mut impl FnMut(SlotChoice)) {
+    /// `slot_options` (or with `PLAYER`, `player_slot_options`), handing each
+    /// option to `push` in order.
+    fn slot_options_with<const PLAYER: bool>(
+        &self,
+        s: usize,
+        slot: usize,
+        push: &mut impl FnMut(SlotChoice),
+    ) {
         let side = &self.sides[s];
         let bench = || (side.n_active..side.mons.len()).filter(|&i| !side.mons[i].fainted);
         if self.request == RequestState::Switch {
@@ -682,15 +703,32 @@ impl Battle {
                 mega: false,
             });
         }
+        // The player's view (request_json): moves shown disabled, or
+        // revealed disabled by a refused choice, are out; with every move
+        // shown disabled the request offers Struggle alone; switches are
+        // out only when the request shows a trap.
+        let shown_trapped = || {
+            m.trapped == Trapped::Yes
+                || (m.trapped == Trapped::Hidden
+                    && (!self.is_last_active(r) || self.revealed(s, slot, Reveal::Trapped)))
+        };
+        let revealed_disabled = PLAYER && self.revealed(s, slot, Reveal::Disabled);
+        let player_struggle = PLAYER && (0..m.moves.len()).all(|i| self.move_shown_disabled(r, i));
         // Every move at every target, with and without Mega Evolution, then
         // Struggle or the switches.
         let can_mega = !side.mega_used && self.can_mega_evo(r).is_some();
         // Moves the Pokémon can use. Imprison's hidden disables leave others
         // in the last active Pokémon's request, but Showdown refuses them.
         // `move_disabled`, with Imprison's test of the foes made once.
-        let imprison = self.foe_side_imprisons(s);
+        let imprison = !PLAYER && self.foe_side_imprisons(s);
         let usable = (0..m.moves.len()).filter(|&i| {
-            !(self.move_disabled_openly(r, i) || (imprison && self.move_imprisoned(r, i)))
+            if PLAYER {
+                !player_struggle
+                    && !(self.move_shown_disabled(r, i)
+                        || (revealed_disabled && m.moves[i].disabled))
+            } else {
+                !(self.move_disabled_openly(r, i) || (imprison && self.move_imprisoned(r, i)))
+            }
         });
         // The target locations of each target type met so far: they depend
         // only on the type here.
@@ -720,6 +758,14 @@ impl Battle {
             } else {
                 targets.push(0);
             }
+            // The request's order (choices.py): the user's own location
+            // before its allies'.
+            if PLAYER && tt == Target::AdjacentAllyOrSelf {
+                let own = -(slot as i8 + 1);
+                if let Some(k) = targets.iter().position(|&t| t == own) {
+                    targets[..=k].rotate_right(1);
+                }
+            }
             for &t in &targets {
                 push(SlotChoice::Move {
                     slot: i,
@@ -734,6 +780,33 @@ impl Battle {
                     });
                 }
             }
+        }
+        if PLAYER {
+            if player_struggle {
+                // The request's one move, Struggle, which ignores "mega".
+                push(SlotChoice::Move {
+                    slot: STRUGGLE,
+                    target: 0,
+                    mega: false,
+                });
+            }
+            let mut any_switch = false;
+            if !shown_trapped() {
+                for i in bench() {
+                    any_switch = true;
+                    push(SlotChoice::Switch { index: i });
+                }
+            }
+            // Nothing offered (every move revealed disabled, and trapped):
+            // Showdown accepts "move 1".
+            if !any_usable && !player_struggle && !any_switch {
+                push(SlotChoice::Move {
+                    slot: 0,
+                    target: 0,
+                    mega: false,
+                });
+            }
+            return;
         }
         // A trapped Pokémon can't switch (Showdown refuses it even when the
         // request hid the trap).
@@ -752,49 +825,155 @@ impl Battle {
         }
     }
 
-    /// All legal joint choices for a side's current request.
+    /// All legal joint choices for a side's current request: what Showdown
+    /// accepts, which can depend on what the player can't see (see
+    /// [`Battle::player_choices`]).
     pub fn joint_choices(&self, s: usize) -> Vec<Vec<SlotChoice>> {
         let n = self.sides[s].n_active;
         let per_slot: Vec<Vec<SlotChoice>> =
             (0..n).map(|slot| self.slot_options(s, slot)).collect();
-        let mut combos: Vec<(usize, Vec<SlotChoice>)> = Vec::new();
-        let mut current = Vec::with_capacity(n);
-        fn rec(
-            per_slot: &[Vec<SlotChoice>],
-            depth: usize,
-            current: &mut Vec<SlotChoice>,
-            out: &mut Vec<(usize, Vec<SlotChoice>)>,
-        ) {
-            if depth == per_slot.len() {
-                let mut switches = Vec::new();
-                let mut megas = 0;
-                for c in current.iter() {
-                    match c {
-                        SlotChoice::Switch { index } => switches.push(*index),
-                        SlotChoice::Move { mega: true, .. } => megas += 1,
-                        _ => {}
+        self.combine_slot_options(per_slot)
+    }
+
+    /// The joint choices a side's request offers its player, in
+    /// `python/ninjask/choices.py`'s order (ally targets included): from
+    /// [`Battle::player_slot_options`], so they depend only on what the
+    /// player can see. Empty without a move or switch request.
+    pub fn player_choices(&self, s: usize) -> Vec<Vec<SlotChoice>> {
+        if !matches!(self.request, RequestState::Move | RequestState::Switch)
+            || !self.side_needs_choice(s)
+        {
+            return Vec::new();
+        }
+        let n = self.sides[s].n_active;
+        let per_slot: Vec<Vec<SlotChoice>> = (0..n)
+            .map(|slot| self.player_slot_options(s, slot))
+            .collect();
+        self.combine_slot_options(per_slot)
+    }
+
+    /// Every team-preview pick a side can make, as team positions (0-based)
+    /// in the order they are sent: each choice of the brought Pokémon, and
+    /// within it each pair of leads, the rest in team order
+    /// (`team_preview_choices` in `python/ninjask/choices.py`). Empty outside
+    /// team preview or once the side has picked.
+    pub fn team_preview_orders(&self, s: usize) -> Vec<Vec<usize>> {
+        let mut out = Vec::new();
+        self.for_each_team_preview_order(s, &mut |o| out.push(o.to_vec()));
+        out
+    }
+
+    /// Each order `team_preview_orders(s)` lists, in its order, handed to
+    /// `f` without building the list.
+    pub fn for_each_team_preview_order(&self, s: usize, f: &mut impl FnMut(&[usize])) {
+        if self.request != RequestState::TeamPreview || !self.side_needs_choice(s) {
+            return;
+        }
+        let n = self.sides[s].mons.len();
+        let bring = self.dex.format.picked_team_size.unwrap_or(n).min(n);
+        let lead = bring.min(2);
+        // Teams have at most six Pokémon (TEAM_MAX).
+        let mut picked = [0usize; TEAM_MAX];
+        let mut order = [0usize; TEAM_MAX];
+        let mut leads = [0usize; 2];
+        for_each_subset(n, bring, &mut picked, 0, 0, &mut |picked| {
+            for_each_subset(picked.len(), lead, &mut leads, 0, 0, &mut |leads| {
+                let mut k = 0;
+                for &l in leads {
+                    order[k] = picked[l];
+                    k += 1;
+                }
+                for (j, &p) in picked.iter().enumerate() {
+                    if !leads.contains(&j) {
+                        order[k] = p;
+                        k += 1;
                     }
                 }
-                let mut sorted = switches.clone();
-                sorted.sort_unstable();
-                sorted.dedup();
-                if sorted.len() == switches.len() && megas <= 1 {
-                    out.push((switches.len(), current.clone()));
+                f(&order[..k]);
+            });
+        });
+    }
+
+    /// Joint choices from each slot's options: Showdown refuses two
+    /// switches to one Pokémon and two Mega Evolutions, and a forced switch
+    /// must fill as many slots as it can.
+    fn combine_slot_options(&self, per_slot: Vec<Vec<SlotChoice>>) -> Vec<Vec<SlotChoice>> {
+        let mut out = Vec::new();
+        self.for_each_combination(&per_slot, &mut |c| out.push(c.to_vec()));
+        out
+    }
+
+    /// Each joint choice `player_choices(s)` lists, in its order, handed to
+    /// `f` without building the list (no allocation per choice).
+    pub fn for_each_player_choice(&self, s: usize, f: &mut impl FnMut(&[SlotChoice])) {
+        if !matches!(self.request, RequestState::Move | RequestState::Switch)
+            || !self.side_needs_choice(s)
+        {
+            return;
+        }
+        let n = self.sides[s].n_active;
+        let per_slot: ArrayVec<Vec<SlotChoice>, MAX_ACTIVE_PER_SIDE> = (0..n)
+            .map(|slot| self.player_slot_options(s, slot))
+            .collect();
+        self.for_each_combination(&per_slot, f);
+    }
+
+    /// The joint choices of each slot's options in product order, keeping
+    /// those Showdown accepts (no two switches to one Pokémon, at most one
+    /// Mega Evolution; a forced switch fills as many slots as it can).
+    fn for_each_combination(
+        &self,
+        per_slot: &[Vec<SlotChoice>],
+        f: &mut impl FnMut(&[SlotChoice]),
+    ) {
+        type Joint = ArrayVec<SlotChoice, MAX_ACTIVE_PER_SIDE>;
+        /// The number of switches of an acceptable joint choice.
+        fn switches(c: &[SlotChoice]) -> Option<usize> {
+            let mut to: ArrayVec<usize, MAX_ACTIVE_PER_SIDE> = ArrayVec::new();
+            let mut megas = 0;
+            for x in c {
+                match *x {
+                    SlotChoice::Switch { index } => {
+                        if to.contains(&index) {
+                            return None;
+                        }
+                        to.push(index);
+                    }
+                    SlotChoice::Move { mega: true, .. } => megas += 1,
+                    _ => {}
                 }
-                return;
             }
-            for c in &per_slot[depth] {
-                current.push(*c);
-                rec(per_slot, depth + 1, current, out);
-                current.pop();
+            (megas <= 1).then_some(to.len())
+        }
+        fn rec(per_slot: &[Vec<SlotChoice>], cur: &mut Joint, f: &mut dyn FnMut(&[SlotChoice])) {
+            let Some((first, rest)) = per_slot.split_first() else {
+                return f(cur);
+            };
+            for c in first {
+                cur.push(*c);
+                rec(rest, cur, f);
+                cur.pop();
             }
         }
-        rec(&per_slot, 0, &mut current, &mut combos);
-        if self.request == RequestState::Switch && !combos.is_empty() {
-            let most = combos.iter().map(|(k, _)| *k).max().unwrap();
-            combos.retain(|(k, _)| *k == most);
-        }
-        combos.into_iter().map(|(_, c)| c).collect()
+        let mut cur = Joint::new();
+        let most = if self.request == RequestState::Switch {
+            let mut most = None;
+            rec(per_slot, &mut cur, &mut |c| {
+                if let Some(k) = switches(c) {
+                    most = Some(most.map_or(k, |m: usize| m.max(k)));
+                }
+            });
+            most
+        } else {
+            None
+        };
+        rec(per_slot, &mut cur, &mut |c| {
+            if let Some(k) = switches(c) {
+                if most.is_none_or(|m| k == m) {
+                    f(c);
+                }
+            }
+        });
     }
 
     /// A random legal joint choice, drawing each slot's option uniformly and
@@ -811,10 +990,10 @@ impl Battle {
         for slot in 0..n {
             if self.slot_options_bound(s, slot) <= SLOT_OPTIONS_INLINE {
                 let o = &mut inline[slot];
-                self.slot_options_with(s, slot, &mut |c| o.push(c));
+                self.slot_options_with::<false>(s, slot, &mut |c| o.push(c));
             } else {
                 let o = &mut heap[slot];
-                self.slot_options_with(s, slot, &mut |c| o.push(c));
+                self.slot_options_with::<false>(s, slot, &mut |c| o.push(c));
             }
         }
         let options = |slot: usize| -> &[SlotChoice] {
@@ -897,6 +1076,28 @@ impl Battle {
         let choices = self.joint_choices(s);
         let c = &choices[rng.random(choices.len() as u32) as usize];
         self.choice_string(c)
+    }
+}
+
+/// Most Pokémon on a team.
+const TEAM_MAX: usize = 6;
+
+/// Every increasing `k`-subset of `0..n`, in lexicographic order, written
+/// into `buf[..k]` and handed to `f` (no allocation).
+fn for_each_subset(
+    n: usize,
+    k: usize,
+    buf: &mut [usize],
+    depth: usize,
+    start: usize,
+    f: &mut dyn FnMut(&[usize]),
+) {
+    if depth == k {
+        return f(&buf[..k]);
+    }
+    for i in start..n {
+        buf[depth] = i;
+        for_each_subset(n, k, buf, depth + 1, i + 1, f);
     }
 }
 

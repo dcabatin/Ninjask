@@ -3,7 +3,7 @@
 use crate::dex::types::*;
 
 /// One slot's part of a choice.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SlotChoice {
     Pass,
     /// Move slot index (0-based), target location (0 = none), Mega Evolve.
@@ -19,7 +19,7 @@ pub enum SlotChoice {
 }
 
 /// What the battle is waiting for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RequestState {
     TeamPreview,
     Move,
@@ -27,7 +27,7 @@ pub enum RequestState {
     Ended,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ActionKind {
     Start,
     BeforeTurn,
@@ -84,7 +84,7 @@ pub enum ActionKind {
 }
 
 /// An action in Showdown's queue, with its sort keys.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Action {
     pub kind: ActionKind,
     pub order: u32,

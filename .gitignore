@@ -1,10 +1,29 @@
 target/
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
 *.so
 # The Showdown checkout (scripts/setup_showdown.sh) and generated data
 third_party/
 data/
 node_modules/
+
+# Windows Python extension build output
+*.pyd
+
+# Other native compiler output
+*.dll
+*.dylib
+*.o
+*.obj
+*.a
+*.lib
+*.pdb
+*.exp
+
+# Python packaging output
+build/
+dist/
+*.egg-info/
+*.whl

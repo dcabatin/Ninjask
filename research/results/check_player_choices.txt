@@ -1,0 +1,2 @@
+{"decisions": 18334, "identical": 18334, "order_only": 0, "different": 0, "refusals": 25, "imprison_states": 0, "trapped_shown": 1466, "maybe": 574}
+examples: []

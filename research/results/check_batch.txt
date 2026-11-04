@@ -1,0 +1,1 @@
+battles 64: decisions 1666; identical decision traces 64/64; identical (winner, turns) 64/64; refusals batch 1, alone 1
