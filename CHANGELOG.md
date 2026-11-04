@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- pyo3 0.25 → 0.30, which fixes RUSTSEC-2026-0176 and RUSTSEC-2026-0177
+  (Ninjask called neither affected API). A crate that embeds Ninjask's
+  classes (feature `python`) must build against pyo3 0.30 too.
+
 ### Fixed
 
 - Mimicry now changes its holder's type when the terrain ends while the

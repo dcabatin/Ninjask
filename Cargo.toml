@@ -29,7 +29,7 @@ python-module = ["python"]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 rayon = "1"
-pyo3 = { version = "0.25", features = ["extension-module"], optional = true }
+pyo3 = { version = "0.30", features = ["extension-module"], optional = true }
 arrayvec = "0.7"
 smallvec = { version = "1.13", features = ["union", "const_generics"] }
 
