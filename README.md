@@ -144,8 +144,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 ```
 
 The full program is [`examples/quickstart.rs`](examples/quickstart.rs). The
-crate reads a format from its JSON export; the Python package carries the
-bundled ones (`ninjask/data/formats/`), and a checkout generates any other.
+crate reads a format from its JSON export and does not ship one: the Python
+package carries the bundled ones, and a checkout generates any other. To run
+the program above, copy the format and the test teams out of the wheel:
+
+```sh
+pip install ninjask
+D=$(python -c "import ninjask, pathlib; print(pathlib.Path(ninjask.__file__).parent / 'data')")
+cp "$D/formats/gen9championsvgc2026regmc.json" .
+cp "$D/regmc_teams.txt" teams.txt
+```
 
 The [API overview](#api-overview) lists everything else; `cargo doc --open`
 (or [docs.rs](https://docs.rs/ninjask)) documents the crate.
