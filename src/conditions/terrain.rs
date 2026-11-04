@@ -95,9 +95,12 @@ impl Battle {
         }
     }
 
-    /// `TerrainChange` on one Pokémon: Mimicry.
+    /// `TerrainChange` on one Pokémon: Mimicry. `eachEvent` reaches every
+    /// active Pokémon not yet marked fainted, so a holder at 0 HP whose faint
+    /// is still pending changes type too (Showdown `runEvent` skips only
+    /// `fainted` holders).
     pub(crate) fn mimicry_on_terrain_change(&mut self, r: MonRef) {
-        if self.mon(r).hp > 0 && self.has_ability(r, AbilityKind::Mimicry) {
+        if self.has_ability(r, AbilityKind::Mimicry) {
             self.mimicry_terrain_change(r);
         }
     }
