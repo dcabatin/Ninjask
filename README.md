@@ -73,10 +73,10 @@ Play a game between two random policies:
 import ninjask
 from ninjask.policy import RandomPolicy
 
-team1, team2 = ninjask.verification_teams()[:2]   # bundled test teams, Showdown's packed format
+team1, team2 = ninjask.verification_teams()[:2]   # 2 of the 4 bundled test teams, Showdown's packed format
 result = ninjask.play_engine_game(
     "gen9championsvgc2026regmc", 1, team1, team2, RandomPolicy(1), RandomPolicy(2)
-)
+)  # format, seed, teams, policies; winner is "p1", "p2" or None
 print(result.winner, result.turns)
 ```
 
