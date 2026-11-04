@@ -370,6 +370,10 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
 - `Tracker(dex, side)` with `.feed(lines)`, `.feed_request(json)`,
   `.feed_battle(battle)`, `.view()` and `.world(assumptions=None, seed=0)`
   (a `Battle`; assumptions as JSON, see `world::Assumptions::from_json`).
+  `feed_battle` (Rust's `feed_engine`) fills in only the player's own side,
+  as its request would; everything else comes from the protocol lines, so in
+  self-play feed both: `t.feed(b.log(side, seen)); t.feed_battle(b)`.
+  `view()` is JSON text whose `sides` are always in the order p1, p2.
 - `Battle.damage(attacker, move, target)` (slots like "p1a"; JSON),
   `.order(a, plan_a, b, plan_b)` (a plan is a move id, "switch" or
   "priority:N"; returns `(first, tie)`) and `.speeds()`.
@@ -383,7 +387,12 @@ built from `src/python.rs` as `ninjask._core` and re-exported by the package)
 - `refsim`: a client for the Showdown reference server (`RefSim`, `Battle`).
 - `choices`, `policy`, `play`, `verify`, `tracker_check`: legal-choice
   enumeration, the policy interface, game loops for either simulator, and the
-  distribution and tracker checks.
+  distribution and tracker checks. The legal choices for a request (as a
+  dict) are `choices.team_preview_choices(request)` when
+  `request.get("teamPreview")`, else
+  `choices.joint_choices(request, game_type="doubles")`. A choice from that
+  list can still be rejected because of something hidden (a trap or a disable), so keep
+  the retry loop of the quick start.
 - `paths`: where Showdown and generated data live. Defaults are inside the
   checkout (`third_party/`, `data/derived/`); override with `NINJASK_HOME`,
   `NINJASK_SHOWDOWN` and `NINJASK_DATA`. `NINJASK_POOL` sets the default team
