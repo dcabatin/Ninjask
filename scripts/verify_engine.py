@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -44,6 +45,8 @@ def main() -> None:
         print(f"   showdown {sd}")
         print(f"   engine   {en}")
     print(args.out)
+    # Fail the run when a distribution differed or a case could not run.
+    sys.exit(1 if report["failures"] or report["errors"] else 0)
 
 
 if __name__ == "__main__":
