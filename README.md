@@ -6,7 +6,7 @@
 
 **A Pokémon Champions VGC doubles simulator that matches
 [Pokémon Showdown](https://github.com/smogon/pokemon-showdown) exactly, about
-250 times faster.** Written in Rust, with Python bindings, for bots,
+200 times faster.** Written in Rust, with Python bindings, for bots,
 reinforcement learning, search and large-scale team analysis. Named after
 Ninjask, a famously fast Pokémon.
 
@@ -28,10 +28,11 @@ agent the wrong game. Ninjask is meant to be both:
   Showdown on 1,000 of 1,000 seeded games of random legal teams and 1,000 of
   1,000 games of real tournament teams, and CI replays 200 against Showdown
   on every change (see [How parity is verified](#how-parity-is-verified)).
-- **Fast.** About 7,000 random games (70,000 to 85,000 turns) per second on
-  one CPU core with logging off, and 50,000 turns per second with the full
-  protocol log on, against Showdown's 200 turns per second on the same
-  machine and teams (`examples/bench.rs --log`, `refsim/bench_showdown.js`).
+- **Fast.** About 6,000 random games (57,000 to 67,000 turns) per second on
+  one CPU core with logging off, and 35,000 to 40,000 turns per second with
+  the full protocol log on, against Showdown's 150 to 175 turns per second on
+  the same machine and teams (`examples/bench.rs --log`,
+  `refsim/bench_showdown.js`; a 4-vCPU cloud VM, Xeon at 2.8 GHz).
   A `Battle` is plain data: copying one for search costs microseconds.
 - **Complete for Reg M-C.** All 510 moves (and Struggle) and 166 items in the format, and
   221 of its 224 abilities (the other three belong only to Pokémon that are
@@ -287,9 +288,9 @@ On the bundled fixture teams (`tests/fixtures/regmc_teams.txt`) the fingerprint 
 `6e2f85907f97e4e9`. A change that preserves behaviour must leave it unchanged.
 
 The bench plays random legal games on one thread with logging off: about
-6,000 to 7,500 games/s on one core of a 4-core cloud VM, on the fixture teams
-or on a pool of real tournament teams (about 735,000 instructions per game
-under callgrind on the latter). Speed on shared hosts varies by 10% or
+5,400 to 6,400 games/s over ten runs on one core of a 4-vCPU cloud VM (Xeon
+at 2.8 GHz), on the four fixture teams or on 704 teams from public replays
+(about 700,000 to 780,000 instructions per game under callgrind). Speed on shared hosts varies by 10% or
 more between runs, so compare instruction counts (`valgrind --tool=callgrind`
 on the bench, a release build with debug info) rather than games/s across
 days.
