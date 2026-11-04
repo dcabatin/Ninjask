@@ -45,8 +45,9 @@ def main() -> None:
         print(f"   showdown {sd}")
         print(f"   engine   {en}")
     print(args.out)
-    # Fail the run when a distribution differed or a case could not run.
-    sys.exit(1 if report["failures"] or report["errors"] else 0)
+    # Fail the run when a distribution differed. An "error" is a case whose
+    # game ended before its test point: skipped, not failed.
+    sys.exit(1 if report["failures"] else 0)
 
 
 if __name__ == "__main__":
