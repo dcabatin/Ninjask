@@ -263,7 +263,9 @@ impl Batch {
 
     /// Apply a choice to each pending decision: `picks[k] = (battle, side,
     /// index)` with `index` into that decision's legal choices as
-    /// [`Batch::observe`] listed them. The battles advance in parallel.
+    /// [`Batch::observe`] listed them. Every pick is checked before any is
+    /// applied, so an error leaves the batch as it was. The battles advance
+    /// in parallel.
     pub fn step(&mut self, picks: &[(usize, usize, usize)]) -> Result<Vec<StepResult>, String> {
         // Group the picks by battle, keeping each one's position in `picks`.
         let mut by_env: Vec<Vec<(usize, usize, usize)>> = vec![Vec::new(); self.envs.len()];
@@ -273,47 +275,40 @@ impl Batch {
             }
             by_env[i].push((k, s, index));
         }
-        let results: Vec<Result<Vec<(usize, StepResult)>, String>> = self
+        // First every choice, as Showdown syntax: an index out of range
+        // fails the call before anything moves.
+        let resolved: Vec<Result<Resolved, String>> = self
             .envs
-            .par_iter_mut()
+            .par_iter()
             .zip(by_env.par_iter())
             .enumerate()
             .map(|(i, (env, mine))| {
-                let mut out = Vec::with_capacity(mine.len());
                 if mine.is_empty() {
-                    return Ok(out);
+                    return Ok(Vec::new());
                 }
-                let env = env
-                    .as_mut()
-                    .ok_or_else(|| format!("battle {i} was never reset"))?;
-                for &(k, s, index) in mine {
+                let b = &env
+                    .as_ref()
+                    .ok_or_else(|| format!("battle {i} was never reset"))?
+                    .battle;
+                mine.iter()
+                    .map(|&(k, s, index)| Ok((k, s, choice_at(b, i, s, index)?)))
+                    .collect()
+            })
+            .collect();
+        let mut chosen = Vec::with_capacity(resolved.len());
+        for r in resolved {
+            chosen.push(r?);
+        }
+        // Then apply them, battle by battle in parallel.
+        let results: Vec<Vec<(usize, StepResult)>> = self
+            .envs
+            .par_iter_mut()
+            .zip(chosen.into_par_iter())
+            .map(|(env, mine)| {
+                let mut out = Vec::with_capacity(mine.len());
+                let Some(env) = env else { return out };
+                for (k, s, choice) in mine {
                     let b = &mut env.battle;
-                    let choice = if b.request == RequestState::TeamPreview {
-                        let (mut seen, mut picked) = (0usize, None);
-                        b.for_each_team_preview_order(s, &mut |o| {
-                            if seen == index {
-                                picked =
-                                    Some(o.iter().map(|p| (p + 1).to_string()).collect::<String>());
-                            }
-                            seen += 1;
-                        });
-                        let picks = picked.ok_or_else(|| {
-                            format!("battle {i} side {s}: choice {index} of {seen}")
-                        })?;
-                        format!("team {picks}")
-                    } else {
-                        let (mut seen, mut picked) = (0usize, None);
-                        b.for_each_player_choice(s, &mut |c| {
-                            if seen == index {
-                                picked = Some(c.to_vec());
-                            }
-                            seen += 1;
-                        });
-                        let c = picked.ok_or_else(|| {
-                            format!("battle {i} side {s}: choice {index} of {seen}")
-                        })?;
-                        b.choice_string(&c)
-                    };
                     let refused = b.choose(s, &choice).is_err();
                     out.push((
                         k,
@@ -323,7 +318,7 @@ impl Batch {
                         },
                     ));
                 }
-                Ok(out)
+                out
             })
             .collect();
         let mut out = vec![
@@ -334,10 +329,38 @@ impl Batch {
             picks.len()
         ];
         for r in results {
-            for (k, res) in r? {
+            for (k, res) in r {
                 out[k] = res;
             }
         }
         Ok(out)
     }
+}
+
+/// One battle's picks resolved to choices: (position in `picks`, side,
+/// Showdown syntax).
+type Resolved = Vec<(usize, usize, String)>;
+
+/// Choice `index` of side `s` in battle `i` (named in errors), as Showdown
+/// syntax: a team-preview order, or a joint choice of the player's view.
+fn choice_at(b: &Battle, i: usize, s: usize, index: usize) -> Result<String, String> {
+    let mut seen = 0usize;
+    let mut picked = None;
+    if b.request == RequestState::TeamPreview {
+        b.for_each_team_preview_order(s, &mut |o| {
+            if seen == index {
+                let p: String = o.iter().map(|p| (p + 1).to_string()).collect();
+                picked = Some(format!("team {p}"));
+            }
+            seen += 1;
+        });
+    } else {
+        b.for_each_player_choice(s, &mut |c| {
+            if seen == index {
+                picked = Some(b.choice_string(c));
+            }
+            seen += 1;
+        });
+    }
+    picked.ok_or_else(|| format!("battle {i} side {s}: choice {index} of {seen}"))
 }
