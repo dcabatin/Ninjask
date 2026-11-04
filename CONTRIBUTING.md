@@ -44,6 +44,7 @@ cargo clippy --release --all-targets --features python-module -- -D warnings
 cargo test --release
 pytest -q
 python scripts/check_reference.py --synthetic --games 200 --workers 4
+python scripts/check_reference.py --pool pools/vgcpastes-regmc.txt --games 200 --workers 4
 cargo run --release --example fingerprint -- data/derived/format/gen9championsvgc2026regmc.json tests/fixtures/regmc_teams.txt 2000
 ```
 
