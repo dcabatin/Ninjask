@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Mimicry now changes its holder's type when the terrain ends while the
+  holder is at 0 HP with its faint still pending, as Showdown does (the
+  `-activate` and `-end typechange` lines were missing). Found by
+  `check_reference.py` in 1 of 10,000 synthetic games; the fingerprint is
+  unchanged.
+
 ## 0.2.0 (2026-10-29)
 
 Behaviour is unchanged: every seeded game gives the same logs, requests and
