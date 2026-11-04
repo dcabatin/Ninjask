@@ -9,6 +9,10 @@
   `-activate` and `-end typechange` lines were missing). Found by
   `check_reference.py` in 1 of 10,000 synthetic games; the fingerprint is
   unchanged.
+- The damage calculation (`Battle::calc`, Python `Battle.damage`) gave Fling
+  a base power of 0 (1 or 2 HP a roll) instead of its item's Fling power.
+  `damage_check` on 704 teams from public replays found it: 6 of 87,591
+  first hits disagreed with play, all Fling. Play itself was right.
 
 ## 0.2.0 (2026-10-29)
 
