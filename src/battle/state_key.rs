@@ -26,18 +26,31 @@ struct SlotKey {
 }
 impl From<&SlotConds> for SlotKey {
     fn from(s: &SlotConds) -> Self {
+        // Every field named, so a new one fails to compile until it is keyed.
+        let SlotConds {
+            wish,
+            healing_wish,
+            healing_wish_detached,
+            future,
+        } = s;
         Self {
-            wish: s.wish.as_ref().map(|w| {
+            wish: wish.as_ref().map(|w| {
+                let WishState {
+                    hp,
+                    starting_turn,
+                    source_slot,
+                    wisher,
+                } = w;
                 (
-                    if w.hp == 0.0 { 0 } else { w.hp.to_bits() },
-                    w.starting_turn,
-                    w.source_slot,
-                    w.wisher.clone(),
+                    if *hp == 0.0 { 0 } else { hp.to_bits() },
+                    *starting_turn,
+                    *source_slot,
+                    wisher.clone(),
                 )
             }),
-            healing_wish: s.healing_wish,
-            healing_wish_detached: s.healing_wish_detached,
-            future: s.future,
+            healing_wish: *healing_wish,
+            healing_wish_detached: *healing_wish_detached,
+            future: *future,
         }
     }
 }
@@ -75,34 +88,72 @@ pub struct BattleStateKey {
 
 impl From<&Battle> for BattleStateKey {
     fn from(b: &Battle) -> Self {
+        // Every field of `Battle` is named here, with no `..`: a field added
+        // to `Battle` fails to compile until it is keyed below or listed as
+        // excluded, so outcomes can't silently merge on a forgotten field.
+        let Battle {
+            dex,
+            sides,
+            field,
+            turn,
+            queue,
+            mid_turn,
+            request,
+            rqid,
+            force_switch,
+            ended,
+            winner,
+            last_fainted_side,
+            faint_queue,
+            move_hit,
+            smart_target,
+            bounce,
+            priority_override,
+            ability_breaker,
+            relocated,
+            probe,
+            vol_stamp,
+            slot_conds,
+            side_extras,
+            active_move,
+            turn_state,
+            // Excluded: the generator's position (enumeration doesn't draw),
+            // and what the log shows and diagnostics, which don't change
+            // what happens next.
+            rng: _,
+            log: _,
+            log_enabled: _,
+            last_move_line: _,
+            damage_samples: _,
+        } = b;
         Self {
-            dex: DexIdentity(b.dex.clone()),
+            dex: DexIdentity(dex.clone()),
             slot_conds: std::array::from_fn(|s| {
-                std::array::from_fn(|i| SlotKey::from(&b.slot_conds[s][i]))
+                std::array::from_fn(|i| SlotKey::from(&slot_conds[s][i]))
             }),
-            sides: b.sides.clone(),
-            field: b.field,
-            turn: b.turn,
-            queue: b.queue.clone(),
-            mid_turn: b.mid_turn,
-            request: b.request,
-            rqid: b.rqid,
-            force_switch: b.force_switch,
-            ended: b.ended,
-            winner: b.winner,
-            last_fainted_side: b.last_fainted_side,
-            faint_queue: b.faint_queue.clone(),
-            move_hit: b.move_hit,
-            smart_target: b.smart_target,
-            bounce: b.bounce,
-            priority_override: b.priority_override,
-            ability_breaker: b.ability_breaker,
-            relocated: b.relocated,
-            probe: b.probe,
-            vol_stamp: b.vol_stamp,
-            side_extras: b.side_extras,
-            active_move: b.active_move.clone(),
-            turn_state: b.turn_state.clone(),
+            sides: sides.clone(),
+            field: *field,
+            turn: *turn,
+            queue: queue.clone(),
+            mid_turn: *mid_turn,
+            request: *request,
+            rqid: *rqid,
+            force_switch: *force_switch,
+            ended: *ended,
+            winner: *winner,
+            last_fainted_side: *last_fainted_side,
+            faint_queue: faint_queue.clone(),
+            move_hit: *move_hit,
+            smart_target: *smart_target,
+            bounce: *bounce,
+            priority_override: *priority_override,
+            ability_breaker: *ability_breaker,
+            relocated: *relocated,
+            probe: *probe,
+            vol_stamp: *vol_stamp,
+            side_extras: *side_extras,
+            active_move: active_move.clone(),
+            turn_state: turn_state.clone(),
         }
     }
 }
