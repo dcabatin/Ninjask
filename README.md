@@ -223,6 +223,33 @@ The tests (`cargo test`, `pytest`) cover units of the same machinery: the RNG
 against Node's output, the choice syntax, format loading and the reference
 harness on a few games.
 
+## Known limitations
+
+- **Three abilities are not simulated:** Gulp Missile, Ice Face and Shields
+  Down. They belong only to formes that are not legal in Reg M-C
+  (Cramorant-Gulping and -Gorging, Eiscue-Noice, Minior-Meteor);
+  `Dex.team_problems` names them if a team uses them.
+- **One pinned Showdown.** Parity is with commit `3a766f2` (2026-10-13).
+  Changes Showdown makes after it are not followed until the pin moves. The
+  tracker reads logs from the live server, which may run a newer version.
+- **Wheels** exist for CPython 3.12 and 3.13 on Linux glibc (x86_64,
+  aarch64), macOS (x86_64, arm64) and Windows (x86_64). Python 3.14, Alpine
+  and Windows on Arm build from source and need Rust.
+- **The crate ships no format data**: Rust users take it from the wheel (see
+  the Rust quick start) or export it from a checkout.
+- **Typing.** The compiled classes are fully typed, but `Battle.request()`
+  is `str | None`, so `json.loads(b.request(side))` needs a check under
+  mypy. The helper modules (`verify`, `play`, ...) are not checked with
+  `--strict`.
+- **pyo3 0.25** carries two advisories fixed in 0.29 (RUSTSEC-2026-0176,
+  RUSTSEC-2026-0177). Ninjask's own code calls neither affected API.
+
+**Stability before 1.0.** A patch release (0.2.x) keeps the public Rust
+and Python API and changes behaviour only to match the pinned Showdown more
+closely; every such change is in the CHANGELOG. A minor release (0.3) may
+change the API or move the Showdown pin, and the CHANGELOG says what to
+update.
+
 ## Working from source
 
 The parity checks, exporting formats other than the bundled ones, and
