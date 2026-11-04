@@ -58,8 +58,13 @@ simulator underneath them, with the tools to prove it matches the reference.
 ### Python
 
 ```sh
-pip install ninjask      # Python 3.12+, Linux, macOS and Windows; the Reg M-C formats are bundled
+pip install ninjask      # the Reg M-C formats are bundled
 ```
+
+Wheels are published for CPython 3.12 and 3.13 on Linux (x86_64 and aarch64,
+glibc), macOS (x86_64 and arm64) and Windows (x86_64). Elsewhere (Python
+3.14, Alpine, Windows on Arm) pip builds from the source distribution, which
+needs a Rust toolchain and takes a few minutes.
 
 Play a game between two random policies:
 
