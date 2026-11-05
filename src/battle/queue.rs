@@ -184,6 +184,7 @@ impl Battle {
                                         slot: ms,
                                         target,
                                         id,
+                                        self_target: false,
                                     };
                                     new_actions.push(self.resolve_chosen_action(kind));
                                 }
@@ -262,6 +263,7 @@ impl Battle {
                 slot,
                 target,
                 id,
+                self_target,
             } => {
                 let r = (side, mon);
                 // resolveAction's runEvent('FractionalPriority') comes first.
@@ -286,6 +288,7 @@ impl Battle {
                                 slot,
                                 target: self.loc_of(r, t),
                                 id,
+                                self_target,
                             };
                         }
                     }
@@ -301,20 +304,32 @@ impl Battle {
                     let mv = dex.mv(id);
                     let mut loc = target;
                     // resolveAction's `action.move` (Champions: Curse from a
-                    // non-Ghost targets the user).
-                    let tt = self.move_target_at_choice(r, mv);
+                    // non-Ghost targets the user). A re-sort only runs
+                    // getActionSpeed, on the move as resolveAction left it.
+                    let self_target = if note_target {
+                        self.move_target_at_choice(r, mv) == Target::SelfTarget
+                            && mv.target != Target::SelfTarget
+                    } else {
+                        self_target
+                    };
+                    let tt = if self_target {
+                        Target::SelfTarget
+                    } else {
+                        mv.target
+                    };
                     if loc == 0 {
                         if let Some(t) = self.get_random_target(r, tt) {
                             loc = self.loc_of(r, t);
                         }
-                        kind = ActionKind::Move {
-                            side,
-                            mon,
-                            slot,
-                            target: loc,
-                            id,
-                        };
                     }
+                    kind = ActionKind::Move {
+                        side,
+                        mon,
+                        slot,
+                        target: loc,
+                        id,
+                        self_target,
+                    };
                     if note_target {
                         self.note_original_target(r, loc);
                     }
@@ -382,7 +397,7 @@ impl Battle {
             }
             return self.action_speed(r);
         }
-        if !(resolution.speeds_current() && m.is_active && !m.fainted) {
+        if !(resolution.speeds_current() && self.collects_handlers(r)) {
             return self.action_speed_draw(r);
         }
         let stored = m.speed;
@@ -615,6 +630,7 @@ impl Battle {
                 slot,
                 target,
                 id: mv.idx,
+                self_target: false,
             },
             Some(frac),
             Resolution::New,
@@ -667,12 +683,22 @@ impl Battle {
         }
     }
 
-    /// resolveAction's `originalTarget` for a move action.
+    /// resolveAction's `originalTarget` for a move action. Each action has
+    /// its own: an Instructed move queued in front of the user's own keeps
+    /// a second one, and runs (and takes it) first.
     pub(crate) fn note_original_target(&mut self, r: MonRef, loc: i8) {
         let target = self.at_loc(r, loc).map(|t| (t.0, self.mon(t).name.clone()));
         let user = (r.0, self.mon(r).name.clone());
-        self.turn_state.original_targets.retain(|(u, _)| *u != user);
         self.turn_state.original_targets.push((user, target));
+    }
+
+    /// The running move action's `originalTarget`: the user's most recently
+    /// made action's, taken off the list.
+    pub(crate) fn take_original_target(&mut self, r: MonRef) -> Option<SideName> {
+        let user = (r.0, self.mon(r).name.clone());
+        let list = &mut self.turn_state.original_targets;
+        let i = list.iter().rposition(|(u, _)| *u == user)?;
+        list.remove(i).1
     }
 }
 fn action_order(kind: &ActionKind) -> u32 {

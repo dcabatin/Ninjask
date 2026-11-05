@@ -597,10 +597,22 @@ impl Battle {
     /// when two of them tie. Only an active Pokémon has handlers.
     #[track_caller]
     pub fn action_speed_draw(&mut self, r: MonRef) -> i32 {
-        if self.mon(r).is_active {
+        // findEventHandlers collects nothing for a target that isn't active,
+        // and Showdown's faintMessages makes a fainted Pokémon inactive (its
+        // queued move still gets a speed when the queue is re-sorted).
+        if self.collects_handlers(r) {
             self.sort_unaware_handlers();
         }
         self.action_speed(r)
+    }
+
+    /// Whether an event on `r` (with no active source) collects handlers:
+    /// not for a Pokémon that isn't active, fainted or revived in its slot
+    /// and not yet sent back in (Revival Blessing).
+    #[inline]
+    pub(crate) fn collects_handlers(&self, r: MonRef) -> bool {
+        let m = self.mon(r);
+        m.is_active && !m.fainted && !m.revived
     }
 
     /// The stored speeds of the active holders of an `onAnyModifyBoost`
@@ -677,7 +689,7 @@ impl Battle {
     fn update_speed(&mut self) {
         let sorts = self.unaware_handler_speeds().len() > 1;
         for r in self.all_active() {
-            if sorts {
+            if sorts && self.collects_handlers(r) {
                 self.sort_unaware_handlers();
             }
             let sp = self.action_speed(r);
@@ -759,6 +771,7 @@ impl Battle {
                 slot,
                 target,
                 id,
+                self_target,
             } => {
                 let r = (side, mon);
                 // A Round that another Round moved up carries its sourceEffect.
@@ -773,7 +786,7 @@ impl Battle {
                     // returns at once, without the end-of-action steps.
                     return false;
                 }
-                self.run_move(r, slot, target, id);
+                self.run_move(r, slot, target, id, self_target);
                 self.turn_state.round_source = false;
             }
             ActionKind::Switch {
@@ -988,6 +1001,10 @@ impl Battle {
                         }
                     }
                     self.store_disabled_moves(r);
+                    // `if (pokemon.getLastAttackedBy()) pokemon.knownType = true`.
+                    if !self.mon(r).attacked_by.is_empty() {
+                        self.mon_mut(r).vol.type_unknown = false;
+                    }
                     self.sync_apparent_type(r);
                     self.run_trap_pokemon(r, true);
                     self.reset_turn_flags(r);
@@ -1052,6 +1069,7 @@ impl Battle {
             .unwrap_or_default();
         let dex = self.dex.clone();
         let sp = dex.species(mega);
+        self.reset_type_knowledge(r);
         {
             let m = self.mon_mut(r);
             // formeChange(isPermanent): the Mega becomes the base species.

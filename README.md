@@ -287,9 +287,9 @@ harness on a few games.
   `mypy --strict`; the helper modules (`verify`, `play`, ...) are not
   checked with `--strict`.
 
-**Stability before 1.0.** A patch release (0.3.x) keeps the public Rust
+**Stability before 1.0.** A patch release (0.4.x) keeps the public Rust
 and Python API and changes behaviour only to match the pinned Showdown more
-closely; every such change is in the CHANGELOG. A minor release (0.4) may
+closely; every such change is in the CHANGELOG. A minor release (0.5) may
 change the API or move the Showdown pin, and the CHANGELOG says what to
 update. Features marked experimental (today, outcome enumeration) are
 outside this promise and may change in any release.
@@ -356,7 +356,7 @@ cargo run --release --example fingerprint -- data/derived/format/gen9championsvg
 ```
 
 On the bundled fixture teams (`tests/fixtures/regmc_teams.txt`) the fingerprint is
-`6e2f85907f97e4e9`. A change that preserves behaviour must leave it unchanged.
+`fb8b1d107db9f213`. A change that preserves behaviour must leave it unchanged.
 
 The bench plays random legal games on one thread with logging off: about
 5,400 to 6,700 games/s over ten runs on one core of a 4-vCPU cloud VM (Xeon

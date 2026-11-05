@@ -71,7 +71,7 @@ impl Battle {
                     // onTryHit: one substitute at a time, and it costs a
                     // quarter of max HP (NOT_FAIL: no `[still]`).
                     let m = self.mon(t);
-                    if m.vol.substitute > 0 {
+                    if m.vol.substitute_halves > 0 {
                         log_line!(self, "|-fail|{ti}|move: Substitute");
                         false
                     } else if m.hp as u32 * 4 <= m.maxhp as u32 || m.maxhp == 1 {
@@ -81,7 +81,7 @@ impl Battle {
                         // TryAddVolatile, the volatile starts, then onHit pays the cost.
                         let quarter = m.maxhp / 4;
                         self.try_add_volatile_sort(t);
-                        self.mon_mut(t).vol.substitute = quarter;
+                        self.mon_mut(t).vol.substitute_halves = quarter * 2;
                         log_line!(self, "|-start|{ti}|Substitute");
                         self.end_partial_trap_silently(t);
                         self.direct_damage(t, quarter as u32, "");
@@ -89,7 +89,9 @@ impl Battle {
                     }
                 }
                 MoveKind::Protect(p) => {
-                    // The protect volatile, then onHit adds or restarts 'stall'.
+                    // The protect volatile (TryAddVolatile, then its start),
+                    // then onHit adds or restarts 'stall'.
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.protect = Some(p);
                     self.stamp_volatile(t, ResidualVol::Protect);
                     log_line!(self, "|-singleturn|{ti}|{}", p.start_name());
@@ -124,12 +126,15 @@ impl Battle {
                     false
                 }
                 MoveKind::FollowMe => {
+                    // addVolatile: TryAddVolatile sorts first.
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.follow_me = true;
                     self.stamp_volatile(t, ResidualVol::FollowMe);
                     log_line!(self, "|-singleturn|{ti}|move: Follow Me");
                     true
                 }
                 MoveKind::RagePowder => {
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.rage_powder = true;
                     self.stamp_volatile(t, ResidualVol::RagePowder);
                     log_line!(self, "|-singleturn|{ti}|move: Rage Powder");
@@ -249,6 +254,14 @@ impl Battle {
                 self.force_switch_target(r, t);
             }
         }
+        // A substitute's null, a failure and NOT_FAIL (Heal Pulse at full HP)
+        // all drop the target from targetsCopy (no gotAttacked).
+        let reached: Vec<MonRef> = hit
+            .iter()
+            .copied()
+            .filter(|t| !blocked.contains(t) && !self.active_move.not_fail.contains(t))
+            .collect();
+        self.active_move.status_reached = reached;
         hit
     }
 
@@ -256,8 +269,9 @@ impl Battle {
     /// stopped by TryHit: Soundproof, Good as Gold, Psychic Terrain against
     /// a Prankster one) and not already counting down starts at three.
     /// False when it reached none.
-    pub(super) fn perish_song(&mut self, r: MonRef, mv: &Move) -> bool {
-        let move_type = mv.type_;
+    /// `move_type` is after ModifyType: Liquid Voice makes it Water, which
+    /// Dry Skin and Water Absorb take in TryHit.
+    pub(super) fn perish_song(&mut self, r: MonRef, mv: &Move, move_type: TypeId) -> bool {
         let mut result = false;
         let mut message = false;
         for p in self.all_active() {
@@ -275,6 +289,7 @@ impl Battle {
             if blocked {
                 result = true;
             } else if self.mon(p).vol.perish == 0 {
+                self.try_add_volatile_sort(p);
                 self.mon_mut(p).vol.perish = 4;
                 self.stamp_volatile(p, ResidualVol::Perish);
                 let pi = self.ident(p);
@@ -782,8 +797,15 @@ impl Battle {
                 }
                 if self.heal(t, amount, "") == 0 {
                     self.note_not_fail(t);
-                } else if self.kings_rock_flinch(r, mv) && self.rng.random(100) < 10 {
-                    // King's Rock's secondary rolls for a target that was healed.
+                } else if (self.kings_rock_flinch(r, mv)
+                    || mv
+                        .secondaries
+                        .iter()
+                        .any(|s| s.volatile.as_deref() == Some("flinch")))
+                    && self.rng.random(100) < 10
+                {
+                    // King's Rock's or Stench's secondary rolls for a target
+                    // that was healed.
                     self.add_volatile(t, "flinch", false);
                 }
                 true
@@ -1211,7 +1233,7 @@ impl Battle {
         let (ri, name) = (self.ident(r), self.dex.ability(ability).name.clone());
         log_line!(self, "|-ability|{ri}|{name}");
         for t in self.foes_of(r) {
-            if self.mon(t).vol.substitute > 0 {
+            if self.mon(t).vol.substitute_halves > 0 {
                 let ti = self.ident(t);
                 log_line!(self, "|-immune|{ti}");
             } else {
@@ -1274,9 +1296,11 @@ impl Battle {
             .map(|(a, _)| a)
             .unwrap_or(old);
         let new = [types[0], types.get(1).copied().unwrap_or(NO_TYPE)];
+        let unknown = t.0 != r.0 || self.mon(t).vol.type_unknown;
         self.mon_mut(r).types = new;
         self.mon_mut(r).added_type = added;
-        self.mon_mut(r).vol.apparent_types = (t.0 != r.0).then_some((stale, new));
+        self.mon_mut(r).vol.type_unknown = unknown;
+        self.mon_mut(r).vol.apparent_types = unknown.then_some((stale, new));
         true
     }
 
@@ -1291,7 +1315,7 @@ impl Battle {
             log_line!(self, "|-fail|{ti}");
             return false;
         }
-        if m.vol.substitute > 0 {
+        if m.vol.substitute_halves > 0 {
             log_line!(self, "|-fail|{ti}|move: Shed Tail");
             return false;
         }
@@ -1301,7 +1325,7 @@ impl Battle {
         }
         let (quarter, half) = (m.maxhp / 4, (m.maxhp as u32).div_ceil(2));
         self.try_add_volatile_sort(t);
-        self.mon_mut(t).vol.substitute = quarter;
+        self.mon_mut(t).vol.substitute_halves = quarter * 2;
         log_line!(self, "|-start|{ti}|Substitute|[from] move: Shed Tail");
         self.end_partial_trap_silently(t);
         self.direct_damage(t, half, "");
@@ -1379,6 +1403,7 @@ impl Battle {
 
     /// Showdown `setType`: the Pokémon's types, and its added type is gone.
     pub(crate) fn set_type(&mut self, r: MonRef, types: [TypeId; 2]) {
+        self.reset_type_knowledge(r);
         let m = self.mon_mut(r);
         m.types = types;
         m.added_type = NO_TYPE;

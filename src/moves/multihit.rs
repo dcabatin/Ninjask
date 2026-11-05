@@ -32,10 +32,12 @@ impl Battle {
                 acc * TABLE[(-eb) as usize]
             };
         }
-        // ModifyAccuracy: a chained modifier applies to the unrounded value
-        // and truncates (Showdown `modify`).
+        // ModifyAccuracy: runEvent applies the chained modifier (Showdown
+        // `modify`, truncating) only to a whole number, so an accuracy the
+        // stage table left fractional (90 at -1: 67.5) keeps no Gravity,
+        // Compound Eyes or Wide Lens.
         let chain = self.accuracy_chain(r, t, mv);
-        if chain.0 != 4096 {
+        if chain.0 != 4096 && acc >= 0.0 && acc.fract() == 0.0 {
             acc = (((acc * chain.0 as f64).trunc() + 2047.0) / 4096.0).trunc();
         }
         if self.accuracy_event(r, t, mv) {

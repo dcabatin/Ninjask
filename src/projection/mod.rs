@@ -183,8 +183,10 @@ impl Battle {
                         if m.vol.heal_block > 0 {
                             volatiles.insert("healblock".into(), json!({"duration": m.vol.heal_block}));
                         }
-                        if m.vol.substitute > 0 {
-                            volatiles.insert("substitute".into(), json!({"hp": m.vol.substitute}));
+                        if m.vol.substitute_halves > 0 {
+                            let h = m.vol.substitute_halves;
+                            let hp = if h % 2 == 0 { json!(h / 2) } else { json!(h as f64 / 2.0) };
+                            volatiles.insert("substitute".into(), json!({ "hp": hp }));
                         }
                         self.project_volatiles(m, &mut volatiles);
                         if m.vol.stall_counter > 0 {
@@ -288,6 +290,7 @@ impl Battle {
                             "illusion": m.illusion,
                             "heroMessageDisplayed": m.hero_message_displayed,
                             "addedType": (m.added_type != NO_TYPE).then(|| self.dex.type_names[m.added_type as usize].clone()),
+                            "knownType": !m.vol.type_unknown,
                         });
                         self.project_mon_extras(m, &mut out);
                         // The volatiles with handlers, in the order they were added.

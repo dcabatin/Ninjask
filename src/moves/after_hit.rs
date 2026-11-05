@@ -41,6 +41,11 @@ fn compare_secondary_handlers(
 impl Battle {
     /// `applyRecoilDamage`, then EmergencyExit for the user.
     pub(super) fn recoil(&mut self, r: MonRef, mv: &Move, kind: MoveKind, dealt: u32) {
+        self.recoil_halves(r, mv, kind, dealt * 2);
+    }
+
+    /// `recoil` from damage in half points (to a substitute left with x.5 HP).
+    pub(super) fn recoil_halves(&mut self, r: MonRef, mv: &Move, kind: MoveKind, dealt: u32) {
         if self.mind_blown_recoil(r, kind) {
             return;
         }
@@ -57,7 +62,7 @@ impl Battle {
                     self.damage_event_sort(r);
                 }
             } else {
-                let amount = (((dealt as f64) * n as f64 / d as f64) + 0.5)
+                let amount = (((dealt as f64 / 2.0) * n as f64 / d as f64) + 0.5)
                     .floor()
                     .max(1.0) as u32;
                 self.apply_damage(r, amount, "|[from] Recoil");
@@ -122,13 +127,15 @@ impl Battle {
             if self.item_kind(t) == Some(ItemKind::EjectButton) && !mv.has(MoveFlag::FutureMove) {
                 handlers.push((t, SecondaryHandler::EjectButton, 2, speed, 8));
             }
-            if self.has_ability(t, AbilityKind::Pickpocket) {
+            // Collected by the raw ability (a suppressed one still sorts),
+            // checked when run.
+            if self.raw_ability_kind(t) == AbilityKind::Pickpocket {
                 handlers.push((t, SecondaryHandler::Pickpocket, 0, speed, 7));
             }
             if self.item_kind(t) == Some(ItemKind::RedCard) {
                 handlers.push((t, SecondaryHandler::RedCard, 0, speed, 8));
             }
-            if self.has_ability(t, AbilityKind::Berserk) {
+            if self.raw_ability_kind(t) == AbilityKind::Berserk {
                 handlers.push((t, SecondaryHandler::Berserk, 0, speed, 7));
             }
         }
@@ -141,16 +148,25 @@ impl Battle {
                         self.cure_status(t);
                     }
                 }
-                SecondaryHandler::EjectButton => self.eject_button(src, t),
-                SecondaryHandler::Pickpocket => self.pickpocket(src, t, mv),
+                SecondaryHandler::EjectButton => {
+                    if mv.category != Category::Status {
+                        self.eject_button(src, t)
+                    }
+                }
+                SecondaryHandler::Pickpocket => {
+                    if self.has_ability(t, AbilityKind::Pickpocket) {
+                        self.pickpocket(src, t, mv)
+                    }
+                }
                 SecondaryHandler::RedCard => self.red_card(src, t, mv),
                 SecondaryHandler::Berserk => self.berserk_on_after_move_secondary(src, t),
             }
         }
     }
 
-    /// `afterMoveSecondaryEvent` after a status move: of the handlers, only
-    /// Berserk's acts on a status move (it marks the berries ready).
+    /// `afterMoveSecondaryEvent` after a status move: the same handlers are
+    /// collected and sorted (two Pickpockets tie), but only Berserk's acts
+    /// on a status move (it marks the berries ready).
     pub(crate) fn run_after_move_secondary_status(
         &mut self,
         src: MonRef,
@@ -158,19 +174,12 @@ impl Battle {
         mv: &Move,
     ) {
         self.begin_damaging_move(mv, false);
-        let mut hs: Small<_> = Small::new();
-        for &t in targets
+        let hit: Small<MonRef> = targets
             .iter()
-            .filter(|&&t| !self.hits_substitute(src, t, mv))
-        {
-            if self.has_ability(t, AbilityKind::Berserk) {
-                hs.push((t, SecondaryHandler::Berserk, 0, self.mon(t).speed, 7));
-            }
-        }
-        self.speed_sort_by(&mut hs, compare_secondary_handlers);
-        for &(t, ..) in hs.iter() {
-            self.berserk_on_after_move_secondary(src, t);
-        }
+            .copied()
+            .filter(|&t| !self.hits_substitute(src, t, mv))
+            .collect();
+        self.run_after_move_secondary(src, &hit, mv);
     }
 
     /// Berserk's `onAfterMoveSecondary`: +1 Special Attack when the move
@@ -264,18 +273,31 @@ impl Battle {
             .unwrap_or(false)
     }
 
-    /// Mega Stones' onTakeItem: a stone that maps from or to the Pokémon's
-    /// base species (the Mega after Mega Evolution) can neither leave it nor
-    /// be given to it, even when the base species is a forme (Floettite:
-    /// Floette-Eternal).
+    /// Mega Stones' onTakeItem: a stone can neither leave nor be given to a
+    /// Pokémon it Mega Evolves. Most stones go by the base species' own base
+    /// species (`megaStone[baseSpecies.baseSpecies]`), so a regional forme
+    /// counts: Slowbro-Galar keeps Slowbronite. Floettite, Magearnite,
+    /// Meowsticite and Tatsugirinite go by the forme's name, from or to
+    /// (Floette-Eternal, or the Mega after Mega Evolution).
     pub(crate) fn item_receivable(&self, r: MonRef, item: ItemId) -> bool {
-        let name = &self.dex.species(self.mon(r).base_species).name;
-        !self
-            .dex
-            .item(item)
-            .mega_stone
-            .iter()
-            .any(|(from, to)| from == name || to == name)
+        let it = self.dex.item(item);
+        if it.mega_stone.is_empty() {
+            return true;
+        }
+        let species = self.dex.species(self.mon(r).base_species);
+        if matches!(
+            it.id.as_str(),
+            "floettite" | "magearnite" | "meowsticite" | "tatsugirinite"
+        ) {
+            let name = &species.name;
+            !it.mega_stone
+                .iter()
+                .any(|(from, to)| from == name || to == name)
+        } else {
+            !it.mega_stone
+                .iter()
+                .any(|(from, _)| *from == species.base_species)
+        }
     }
 
     /// Knock Off's `onAfterHit`: the target loses its item.
@@ -331,13 +353,15 @@ impl Battle {
         t: MonRef,
         sec: &Secondary,
         effect: EffectRef,
+        own: bool,
     ) {
-        if let EffectRef::Move(m) = effect {
+        if let (true, EffectRef::Move(m)) = (own, effect) {
             if self.secondary_on_hit(src, t, m) || self.volatile_secondary_on_hit(src, t, m) {
                 return;
             }
             if self.dex.move_kind[m as usize] == MoveKind::ThroatChop {
                 if self.mon(t).hp > 0 && self.mon(t).vol.throat_chop == 0 {
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.throat_chop = 2;
                     self.stamp_volatile(t, ResidualVol::ThroatChop);
                     let ti = self.ident(t);
@@ -637,12 +661,18 @@ impl Battle {
     /// (subOrder 2) in the order they were added, lockedmove's and Charge's;
     /// then every White Herb's onAnyAfterMove (an item, 8), the user's side
     /// first. By speed, equal ones drawn.
-    pub(crate) fn run_after_move(&mut self, r: MonRef, move_id: MoveId) {
+    /// `target` is runMove's: with neither it nor the user still active (a
+    /// Copycat that called Memento), findEventHandlers collects nothing.
+    pub(crate) fn run_after_move(&mut self, r: MonRef, move_id: MoveId, target: Option<MonRef>) {
         match self.dex.move_kind[move_id as usize] {
             MoveKind::SpitUp => self.end_stockpile(r),
             MoveKind::BeakBlast if self.mon(r).hp > 0 => self.mon_mut(r).vol.beak_blast = false,
             MoveKind::SparklingAria => self.sparkling_aria_on_after_move(r),
             _ => {}
+        }
+        let active = |b: &Battle, x: MonRef| b.mon(x).is_active && !b.mon(x).fainted;
+        if !active(self, r) && !target.is_some_and(|t| active(self, t)) {
+            return;
         }
         use crate::abilities::{compare_mod, ModHandler};
         use crate::kinds::ItemKind;
@@ -670,11 +700,15 @@ impl Battle {
             .collect();
         let mut holders = self.all_active();
         holders.sort_by_key(|h| h.0 != r.0);
-        for h in holders {
+        // alliesAndSelf() and foes() leave out a Pokémon with no HP left
+        // (a user its recoil knocked out, its faint not yet announced).
+        for h in holders.into_iter().filter(|&h| self.mon(h).hp > 0) {
             if self.raw_ability_kind(h) == AbilityKind::Opportunist {
                 hs.push((H::Opportunist(h), ModHandler::new(0, self.mon(h).speed, 7)));
             }
-            if self.item_kind(h) == Some(ItemKind::WhiteHerb) {
+            // An ignored White Herb (Magic Room, Klutz) still sorts; it is
+            // checked when run.
+            if self.held_item_kind(h) == Some(ItemKind::WhiteHerb) {
                 hs.push((H::WhiteHerb(h), ModHandler::new(0, self.mon(h).speed, 8)));
             }
         }

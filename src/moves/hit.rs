@@ -149,6 +149,9 @@ impl Battle {
     /// Add or restart the `stall` volatile (Protect's consecutive-use counter).
     pub(crate) fn add_stall(&mut self, r: MonRef) {
         if self.mon(r).vol.stall_counter == 0 {
+            // addVolatile of a new volatile: TryAddVolatile sorts first (two
+            // tied Sweet Veils draw); a present one only restarts.
+            self.try_add_volatile_sort(r);
             self.stamp_volatile(r, ResidualVol::Stall);
         }
         let m = self.mon_mut(r);
@@ -238,6 +241,11 @@ impl Battle {
         // A one-hit KO skips ModifyAccuracy and the stages: 30, or 20 for
         // Sheer Cold from a non-Ice user, plus the level difference.
         if let Some(immune_type) = mv.ohko {
+            // Against a semi-invulnerable target (reached through No Guard)
+            // Showdown skips that block: the move's own accuracy.
+            if self.semi_invulnerable(t) {
+                return acc.map_or(Accuracy::Sure, Accuracy::Fixed);
+            }
             let base = match immune_type {
                 Some(ty) if !self.has_type_of(r, ty) => 20,
                 _ => 30,
@@ -316,7 +324,8 @@ impl Battle {
                 let Some(h) = self.active(s, slot).filter(|&h| self.mon(h).hp > 0) else {
                     continue;
                 };
-                if self.has_ability(h, crate::kinds::AbilityKind::NoGuard) {
+                // A suppressed No Guard still sorts (findEventHandlers).
+                if self.raw_ability_kind(h) == crate::kinds::AbilityKind::NoGuard {
                     hs.push((Some(h), ModHandler::new(0, self.mon(h).speed, 7)));
                 }
             }
@@ -369,7 +378,7 @@ impl Battle {
     /// own, and not a `bypasssub` move or an Infiltrator's.
     pub(crate) fn hits_substitute(&self, src: MonRef, t: MonRef, mv: &Move) -> bool {
         t != src
-            && self.mon(t).vol.substitute > 0
+            && self.mon(t).vol.substitute_halves > 0
             && !mv.has(MoveFlag::BypassSub)
             && !self.infiltrates(src)
             && !self.ally_puff_on_try_hit(src, &[t], self.dex.move_kind[mv.idx as usize])
@@ -499,6 +508,9 @@ impl Battle {
                 .active_move
                 .call
                 .is_some_and(|c| c.user == r && self.sleep_usable(c.source));
+        // Skill Link deletes `multiaccuracy` in ModifyMove: decided once, so
+        // losing Skill Link mid-move (Wandering Spirit) changes nothing.
+        let multiaccuracy = self.has_multiaccuracy(r, kind);
         for hit in 1..=hits {
             if hit > 1 && self.mon(r).status == Status::Slp && !sleep_usable {
                 break;
@@ -528,10 +540,7 @@ impl Battle {
             }
             // multiaccuracy (Triple Axel): each hit after the first rolls
             // again, and a miss ends the move without a message.
-            if self.has_multiaccuracy(r, kind)
-                && hit > 1
-                && !self.multiaccuracy_hits(r, targets[0], mv)
-            {
+            if multiaccuracy && hit > 1 && !self.multiaccuracy_hits(r, targets[0], mv) {
                 // `targetsCopy` was just reset to every target, so gotAttacked
                 // below also reaches one a substitute shielded on the last hit.
                 accuracy_break = true;
@@ -564,7 +573,10 @@ impl Battle {
                 .collect();
             let damages: PerActive<u32> = live
                 .iter()
-                .map(|&t| self.move_damage(r, t, mv, kind, move_type, type_changed, spread))
+                .map(|&t| {
+                    self.active_move.active_target = Some(t);
+                    self.move_damage(r, t, mv, kind, move_type, type_changed, spread)
+                })
                 .collect();
             let mut damaged = ActiveList::new();
             let mut dealt_now: PerActive<(MonRef, u32)> = PerActive::new();
@@ -579,6 +591,9 @@ impl Battle {
                 }
                 dealt_now.push((t, dealt));
                 self.note_move_damage(t, r);
+                if mv.has(MoveFlag::FutureMove) && self.mon(t).hp == 0 {
+                    self.turn_state.future_move_kills.push(t);
+                }
                 self.note_hit_damage(t, dealt);
                 total_damage += dealt;
                 if let (Some((n, d)), true) = (mv.drain, dealt > 0) {
@@ -658,16 +673,36 @@ impl Battle {
                 let sub = subbed.contains(&t);
                 // ModifySecondaries (Shield Dust) filters before any roll; a
                 // substitute made the target null, so its handlers don't run.
+                // Its sort: the target's Shield Dust and the user's Parental
+                // Bond (`onSourceModifySecondaries`), equal ones drawn.
+                if !sub && (!mv.secondaries.is_empty() || kings_rock) {
+                    use crate::abilities::{compare_mod, ModHandler};
+                    let mut hs: Small<ModHandler> = Small::new();
+                    if self.raw_ability_kind(t) == AbilityKind::ShieldDust {
+                        hs.push(ModHandler::new(0, self.mon(t).speed, 7));
+                    }
+                    if self.raw_ability_kind(r) == AbilityKind::ParentalBond {
+                        hs.push(ModHandler::new(0, self.mon(r).speed, 7));
+                    }
+                    if hs.len() > 1 {
+                        self.speed_sort_by(&mut hs, compare_mod);
+                    }
+                }
                 let shielded = !sub && self.shield_dust_on_modify_secondaries(t);
-                for sec in mv
+                // The move's own secondaries come first; Stench appends its
+                // flinch, which the move's own handlers (Syrup Bomb's...)
+                // don't touch.
+                let own = self.dex.mv(mv.idx).secondaries.len();
+                for (i, sec) in mv
                     .secondaries
                     .iter()
-                    .filter(|s| !shielded || s.self_boosts.is_some())
+                    .enumerate()
+                    .filter(|(_, s)| !shielded || s.self_boosts.is_some())
                 {
                     let roll = self.rng.random(100);
                     if sec.chance.map(|c| roll < c as u32).unwrap_or(true) {
                         if !sub {
-                            self.apply_secondary(r, t, sec, effect);
+                            self.apply_secondary(r, t, sec, effect, i < own);
                         } else if let Some(b) = sec.self_boosts {
                             self.boost_listed(r, &b, Some(r), effect, true, true);
                         }
@@ -815,10 +850,25 @@ impl Battle {
         type_changed: bool,
         spread: bool,
     ) {
+        // Unaware goes by `activeTarget`, still the last target the accuracy
+        // step (or the previous hit's damage) set: on a spread move, another
+        // target's Unaware can ignore the user's stages here.
+        self.active_move.unaware_target = Some(self.active_move.active_target.unwrap_or(t));
         let dmg = self.move_damage(r, t, mv, kind, move_type, type_changed, spread);
-        let sub = self.mon(t).vol.substitute as u32;
+        self.active_move.unaware_target = None;
+        // In half points: Metal Burst's and Comeuppance's 1.5 times reaches
+        // the substitute unrounded.
+        let dmg = match kind {
+            MoveKind::Comeuppance | MoveKind::MetalBurst
+                if mv.ohko.is_none() && mv.fixed_damage.is_none() =>
+            {
+                self.counter_burst_halves(r)
+            }
+            _ => dmg * 2,
+        };
+        let sub = self.mon(t).vol.substitute_halves as u32;
         let dmg = dmg.min(sub);
-        self.mon_mut(t).vol.substitute = (sub - dmg) as u16;
+        self.mon_mut(t).vol.substitute_halves = (sub - dmg) as u16;
         let ti = self.ident(t);
         if dmg == sub {
             if mv.ohko.is_some() {
@@ -829,11 +879,11 @@ impl Battle {
             log_line!(self, "|-activate|{ti}|move: Substitute|[damage]");
         }
         if dmg > 0 {
-            self.recoil(r, mv, kind, dmg);
+            self.recoil_halves(r, mv, kind, dmg);
         }
         if let Some((n, d)) = mv.drain {
             // Rounded up here, unlike a drain from the Pokémon's own HP.
-            let amount = (dmg * n).div_ceil(d);
+            let amount = (dmg * n).div_ceil(2 * d);
             if amount > 0 && !self.liquid_ooze_on_source_try_heal(r, t, amount) {
                 let amount = self.drain_heal_mod(r, amount);
                 self.heal(r, amount, &format!("|[from] drain|[of] {ti}"));
@@ -900,11 +950,6 @@ impl Battle {
                     return Some(Some(false));
                 }
                 None
-            }
-            // onTryHit on its user: fails without a Pokémon to switch in.
-            MoveKind::HealingWish if !self.can_switch_side(r.0) => {
-                self.fail_move(r);
-                Some(Some(false))
             }
             // onTry: Stockpile stops at 3 layers; Spit Up and Swallow need one.
             MoveKind::Stockpile if self.mon(r).vol.stockpile >= 3 => {

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-11-04)
+
+A native interface for training (`ninjask.Batch`, player-view legal
+choices, numeric observations), experimental exact outcome enumeration
+contributed by CalebBrody (dcabatin/Ninjask#8), and `research/` on what
+trading parity for speed would buy. Every seeded game gives the same logs,
+requests and draws as 0.3.0 except where the fixes below apply. The
+fingerprint moved from `6e2f85907f97e4e9` to `fb8b1d107db9f213` with the
+same logs, requests and random numbers: a status move's AfterMoveSecondary
+sort now collects the frozen target's handler, as Showdown does, so a
+traced sort records one item where it had none.
+
+Upgrading an editable checkout from before 0.3.0: delete
+`python/ninjask/_core.cpython-*.so`, or Python keeps loading it instead of
+the new `_core.abi3.so`.
+
 ### Added
 
 - **Experimental:** Rust and Python outcome enumeration for search and regret minimization,
@@ -35,10 +51,177 @@
     `for_each_player_choice`. About 700 random games/s with every decision
     observed on one core of a 4-vCPU VM, and 1,300 on four; a loop through
     the JSON requests plays about 45.
+- `scripts/check_chaos.py`: games between teams made of the strangest
+  supported mechanics (Illusion, Imposter, Transform, Reflect Type, Perish
+  Song, Future Sight, Instruct, Skill Swap and the like), compared with
+  Showdown after every input. It found the fixes under Fixed below.
 - `research/`: what trading parity for speed would buy (about 1.2 times
   in the engine, for real changes to play) and how much engine speed
   matters in training. The research-only switches behind it
   (`ninjask::approx`, feature `approx`) are off in every release.
+
+### Fixed
+
+- A Curse chosen before its user becomes a Ghost the same turn (Absol
+  Mega Evolving into Absol-Mega-Z) keeps the user as its target, as in
+  Showdown, whose queued move keeps the target it was resolved with: its
+  onHit then curses a random foe directly, so Good as Gold doesn't stop
+  it. The engine aimed it at a foe instead, which Good as Gold blocked.
+- Metal Burst and Comeuppance deal 1.5 times an odd damage to a
+  substitute unrounded, as in Showdown, which leaves the substitute with
+  x.5 HP. Two such hits add up to a whole point a later hit no longer
+  has to take, and a drain or recoil from breaking such a substitute is
+  rounded from the x.5. The engine rounded the damage down. The
+  projection shows the half (`"hp": 30.5`).
+- An item handed to a Pokémon that ignores its item (Klutz, Magic Room)
+  by Trick, Recycle, Symbiosis or the like still runs its Start, as in
+  Showdown: a Metronome adds its volatile, a White Herb on a lowered stat
+  is used up (without resetting it), and a Choice item clears an old
+  Choice lock. The engine skipped them. At switch-in an ignored item
+  still does nothing. Found by the large reference run in 1 of 5,000
+  synthetic games (a Klutz Golurk Tricking away a Metronome).
+- Found by "chaos" games, whose every Pokémon carries Illusion, Imposter,
+  Transform, Reflect Type, Perish Song, Future Sight, Skill Swap and the
+  like (all 51 diverging games in 2,000 now match):
+  - Type knowledge as Showdown keeps it (`knownType`): a Pokémon that
+    transforms into a foe, or Reflect Types one, hides its new types until
+    something attacks it, so Reflect Type on such an ally keeps the old
+    apparent type, and the end-of-turn catch-up looks at the teammate a
+    disguised Zoroark appears as. Status moves now count as attacks for it
+    (`attackedBy`), and the projection carries `knownType`.
+  - A fainted Pokémon's queued move no longer sorts the Unaware holders
+    when the queue is re-sorted (it isn't active any more), which drew an
+    extra random number.
+  - Opportunist's onEnd forgets its pending boosts (also on fainting).
+  - Revival Blessing with nobody to revive fails after Protean and Libero
+    act (its check is onTryHit), not before.
+  - Struggle is typeless (`???`) rather than Stellar, so Protean and Libero
+    leave it alone and it gets no STAB.
+  - Each queued move keeps its own `originalTarget` (Stalwart, Snipe
+    Shot): an Instructed move queued in front of the user's own no longer
+    replaces the target the user's own move tracks.
+  - Destiny Bond doesn't take down the user of a Future Sight that knocks
+    out its holder (`futuremove`).
+  - A Pokémon brought in by Baton Pass or Shed Tail starts with no
+    record of past hits (`timesAttacked`, `attackedBy`), as
+    `copyVolatileFrom`'s `clearVolatile` leaves it.
+  - The AfterMove event collects no handlers when neither the user nor
+    runMove's target is still active (a Copycat that called Memento), so
+    White Herb waits for the next move.
+  - Iron Ball's effectiveness handler returns at once under Gravity,
+    Ingrain or Smack Down, so a grounded Bug/Flying holder resists Ground.
+  - A residual ability handler suppressed by Gastro Acid still gets the
+    faint check after it (a Perish Song faint shows before `upkeep`).
+  - The AfterMove handlers leave out a Pokémon left with no HP (a user
+    its own recoil knocked out), as `alliesAndSelf()` and `foes()` do.
+  - Volatiles that Showdown adds with `addVolatile` now run the
+    TryAddVolatile sort first, which draws when two handlers tie (two
+    Sweet Veils): Protect's and Wide Guard's `stall`, Follow Me, Rage
+    Powder, Perish Song and Throat Chop's secondary.
+  - A status move records `attackedBy` only on the targets it took effect
+    on past any substitute (`targetsCopy`).
+  - Stalwart doesn't make Counter, Mirror Coat, Metal Burst and Comeuppance
+    track their target (`move.target !== 'scripted'`): they still go to
+    the last attacker.
+  - A ModifyBoost event on a Pokémon that has left the field (a Future
+    Sight's user) sorts no Unaware handlers.
+  - Air Lock's and Cloud Nine's onEnd runs under Gastro Acid too (End
+    isn't suppressed).
+  - Healing Wish with nobody to switch in fails after Protean and Libero
+    act (onTryHit), like Revival Blessing.
+  - Baton Pass and Shed Tail clear the newcomer's last move and move
+    results too (`copyVolatileFrom`'s `clearVolatile`).
+  - A fainting Illusion holder's onFaint joins the Faint event's sort (it
+    ties with an ally's Receiver at equal speed).
+  - Cud Chew re-eating a berry under Magic Room (or Klutz) has no effect,
+    as Showdown's suppressed `Eat` event leaves it.
+  - A charging move called by another (Copycat) remembers the slot of its
+    target after redirection (Lightning Rod), as `twoturnmove` does.
+  - Clear Body, White Smoke and Full Metal Body stay silent for Octolock's
+    drop.
+  - A status move whose effect returns NOT_FAIL (Heal Pulse at full HP)
+    doesn't count as an attack (`attackedBy`).
+  - Event sorts collect a suppressed ability's handler too, as
+    `findEventHandlers` does, and skip it when it runs: Gastro Acid, Mold
+    Breaker, and a transformed Pokémon's `notransform` ability (a Ditto
+    copying Morpeko's Hunger Switch), for Damp, No Guard, Pickpocket,
+    Berserk, Unburden, Symbiosis, Sniper and the residual handlers.
+  - Ally Switch's own AfterMoveSecondary event goes to the Pokémon that
+    used it, in its new slot (it ran an ally's Berserk).
+  - Magic Bounce bounces a side move (Spikes) even while its holder is
+    mid-Dive: `onAllyTryHitSide` checks the move's first target.
+  - Life Orb's recoil follows a Sheer Force move whose user lost Sheer
+    Force during it (Wandering Spirit): `suppressingSecondaries()` checks
+    the ability, not only the move.
+  - Flower Veil (unlike Clear Body) still announces Octolock's drop.
+  - Every side move runs TryHitSide's sort over its side's Magic Bounce,
+    Sap Sipper and Soundproof holders; Sap Sipper drinks a Grass move
+    aimed at its side, and Soundproof announces a sound one.
+  - Replacing or suppressing Illusion (Simple Beam, Worry Seed,
+    Entrainment, Gastro Acid) breaks the disguise first, as its onEnd does.
+  - An ignored White Herb (Magic Room, Klutz) still sorts in AfterMove
+    and AfterMega.
+  - TryBoost's handlers (the target's own ability and each Flower Veil on
+    its side) run in speed order: a faster ally's Flower Veil blocks a
+    drop before Mirror Armor reflects it.
+  - Life Orb, Expert Belt and resist berries join the ModifyDamage sort
+    while ignored; Overcoat defers to a Grass type's own powder immunity.
+  - Future Sight on a revived Pokémon not yet sent in calculates its
+    damage and fails; a partial trap remembers its user while that user
+    is off the field; a Pokémon off the field takes no status (Spicy Spray
+    on a Future Sight user).
+  - An ally's Pollen Puff rolls Stench's flinch secondary like King's
+    Rock's; the ModifySecondaries sort (Shield Dust, Parental Bond) and
+    each tryTrap's Immunity sort are drawn, with Magnet Rise, Dig and Dive
+    among the Immunity handlers.
+  - A regional forme keeps its species' Mega Stone (Slowbro-Galar and
+    Slowbronite): most stones' onTakeItem goes by the base species' own
+    base species. Found by parity on the 418-team coverage pool of
+    just_a_simulator.
+  - The `???` type never gets STAB (Struggle from a Pokémon Burn Up left
+    `???`); Burn Up from a frozen user that isn't Fire type goes through
+    the freeze check instead of thawing it; a terrain set during the
+    residuals (Seed Sower hit by Future Sight) keeps its full duration,
+    the old terrain's countdown ticking instead; Baton Pass doesn't pass on
+    unknown types.
+  - Stench's flinch on a move with its own secondary handler (Syrup Bomb,
+    Throat Chop...) is applied, not handed to that handler; a damaging
+    move aimed at its own user (a locked Thrash with no foe in range)
+    checks the user's type immunity.
+  - Shell Side Arm compares boosted stats without the ModifyBoost event,
+    so Unaware doesn't hide the user's boosts; the residual sort collects
+    every Pokémon in a slot, a revived one not yet sent back in included
+    (with its ability).
+  - Later hits of Population Bomb and Triple Axel: a fractional accuracy
+    (after the stage table) takes no ModifyAccuracy modifier (Gravity,
+    Compound Eyes...), as Showdown's runEvent modifies only whole numbers;
+    Skill Link's removal of the per-hit check is decided once, so losing
+    the ability mid-move (Wandering Spirit) changes nothing.
+  - A status move's AfterMoveSecondary sort collects every handler
+    (Pickpocket, Red Card, Eject Button, freeze), not only Berserk's; Heal
+    Bell ignores a fainted ally's Good as Gold; Leftovers taken during the
+    residuals (Symbiosis) still heals its old holder that turn.
+  - A Pokémon revived in its slot and not yet sent back in counts as
+    inactive: its speed collects no handlers (no Unaware sort), and a
+    partial trap it set ends. A substitute's damage takes Unaware from
+    Showdown's `activeTarget`, the last target of the accuracy step, so on
+    a spread move another target's Unaware can ignore the user's stages.
+  - A forced eat (Teatime) skips TryEatItem, so Ripen isn't announced;
+    Oblivious and Own Tempo on a Pokémon with no HP announce themselves
+    but can't remove the volatile (removeVolatile needs HP); a switch-in
+    item handler belongs to the item it was collected for, so Symbiosis
+    mid-switch-in skips the new holder's and still announces a given-away
+    Air Balloon for its old holder.
+  - Symbiosis handlers are collected in slot order (`alliesAndSelf`),
+    which decides speed ties; Syrup Bomb stays on a holder with no HP
+    (removeVolatile needs HP); a one-hit KO move on a semi-invulnerable
+    target (No Guard) skips the level and Ice checks and keeps its own
+    accuracy.
+  - Perish Song's TryHit sees its type after Liquid Voice (Dry Skin,
+    Water Absorb); Pickup on a Pokémon with no HP shows its message but
+    gives no item; an Instructed move whose first action is a before-turn
+    or priority-charge one (Mirror Coat) leaves no original target for the
+    Pokémon's own queued move.
 
 ### Changed
 

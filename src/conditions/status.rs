@@ -48,6 +48,11 @@ impl Battle {
         if m.hp == 0 {
             return false;
         }
+        // A Pokémon off the field takes no status (a Future Sight user that
+        // left, touched by Spicy Spray).
+        if !m.is_active || m.revived {
+            return false;
+        }
         let ti = self.ident(t);
         if m.status != Status::None {
             if status_move {

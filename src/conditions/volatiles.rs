@@ -704,7 +704,7 @@ impl Battle {
         // Shed Tail (`selfSwitch: 'shedtail'`): only the substitute, no stat stages.
         if self.dex.move_kind[from as usize] == MoveKind::ShedTail {
             let v = Volatiles {
-                substitute: self.mon(old).vol.substitute,
+                substitute_halves: self.mon(old).vol.substitute_halves,
                 ..Volatiles::default()
             };
             return Some((v, [0; 7]));

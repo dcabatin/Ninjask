@@ -15,6 +15,13 @@ pub struct ActiveMove {
     pub cur_move: Option<MoveId>,
     /// Showdown `activePokemon`, set and cleared with `cur_move` (Mega Sol).
     pub cur_user: Option<MonRef>,
+    /// Showdown `battle.activeTarget`: set for each target by the accuracy
+    /// step and by `getSpreadDamage`, so a substitute's damage (computed in
+    /// `tryPrimaryHitEvent`, before `getSpreadDamage`) sees the last one.
+    pub active_target: Option<MonRef>,
+    /// While a substitute's damage is computed: the `activeTarget` whose
+    /// Unaware decides which stages are ignored.
+    pub unaware_target: Option<MonRef>,
     /// The move last used and its type after ModifyType (Showdown's
     /// `activeMove`), for the user's `AfterMove` handlers.
     pub used_type: Option<(MoveId, TypeId)>,
@@ -54,6 +61,9 @@ pub struct ActiveMove {
     pub bypass: Vec<MonRef>,
     /// The item Fling threw, and who threw it (the `onHit` it installed).
     pub fling: Option<(ItemId, MonRef)>,
+    /// The targets a status move took effect on, past any substitute: the
+    /// hit loop's `targetsCopy`, which `gotAttacked` records.
+    pub status_reached: Vec<MonRef>,
     /// Targets the move in use last hit critically (`getMoveHitData(move).crit`).
     pub crit: Vec<MonRef>,
     /// Each target's damage from the move's last hit on it (`moveDamage`,
@@ -81,6 +91,9 @@ pub struct TurnState {
     /// Faint-queue entries caused by a move's damage, with the move's user
     /// (Showdown `faintData.source` when `faintData.effect` is a move).
     pub move_kills: Vec<(MonRef, MonRef)>,
+    /// Those of `move_kills` from a future move (Future Sight): Destiny Bond
+    /// ignores them (`!effect.flags['futuremove']`), Moxie doesn't.
+    pub future_move_kills: Vec<MonRef>,
     /// Pokémon whose queued Round was moved up by another Round
     /// (`action.sourceEffect`); cleared each turn.
     pub round_actions: Vec<MonRef>,

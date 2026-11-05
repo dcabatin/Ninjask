@@ -154,7 +154,16 @@ impl Battle {
 
     /// Showdown `runMove`: before-move checks, PP, then `useMove`. `slot` is
     /// a move slot, `STRUGGLE` or `RECHARGE`. Records `moveThisTurnResult`.
-    pub(crate) fn run_move(&mut self, r: MonRef, slot: usize, target_loc: i8, id: MoveId) {
+    /// `self_target`: the queued action's move targets the user
+    /// (`ActionKind::Move::self_target`).
+    pub(crate) fn run_move(
+        &mut self,
+        r: MonRef,
+        slot: usize,
+        target_loc: i8,
+        id: MoveId,
+        self_target: bool,
+    ) {
         self.mon_mut(r).active_move_actions += 1;
         let move_id = match slot {
             RECHARGE => None,
@@ -167,10 +176,15 @@ impl Battle {
         // `recharge` (no target type) get a random foe too.
         let tracks =
             move_id.is_some_and(|id| self.dex.move_kind[id as usize] == MoveKind::SnipeShot);
-        let target = match (move_id, self.target_ignoring_redirection(r, tracks)) {
+        let original = self.take_original_target(r);
+        let target = match (
+            move_id,
+            self.target_ignoring_redirection(r, tracks, original),
+        ) {
             (_, Some(t)) => Some(t),
             (Some(id), None) => {
                 let (tt, smart) = (self.dex.mv(id).target, self.dex.mv(id).smart_target);
+                let tt = if self_target { Target::SelfTarget } else { tt };
                 let future = self.dex.mv(id).has(MoveFlag::FutureMove);
                 self.get_target(r, tt, target_loc, smart, future)
             }
@@ -225,13 +239,15 @@ impl Battle {
         m.last_move = Some(move_id);
         m.last_move_target_loc = target_loc;
         m.moved_this_turn = true;
-        let result = self.use_move(r, move_id, target, target_loc, locked);
-        let r = self.relocated_mon(r);
+        let result = self.use_move(r, move_id, target, target_loc, locked, self_target);
+        let moved = self.relocated_mon(r);
+        let target = target.map(|t| if t == r { moved } else { t });
+        let r = moved;
         // A called move (Copycat, Sleep Talk) is the active move from here
         // on, and its result is the Pokémon's.
         let (move_id, result) = self.called_move_result(r, move_id, result);
         self.mon_mut(r).move_this_turn_result = result;
-        self.run_after_move(r, move_id);
+        self.run_after_move(r, move_id, target);
         self.faint_messages();
         self.check_win();
     }
@@ -295,9 +311,7 @@ impl Battle {
             self.mon_mut(r).vol.must_recharge = 0;
             return Err(None);
         }
-        let defrost = move_id
-            .map(|id| self.dex.mv(id).has(MoveFlag::Defrost))
-            .unwrap_or(false);
+        let defrost = move_id.is_some_and(|id| self.defrosts(r, id));
         match self.mon(r).status {
             Status::Slp => {
                 let dec = self.early_bird_sleep_decrement(r);
@@ -443,11 +457,10 @@ impl Battle {
                 t = self.dex.type_id(name).unwrap_or(t);
             }
         }
-        // Struggle's onModifyMove: type `???`, which nothing resists, is
-        // immune to or shares. Stellar behaves the same here (no Pokémon
-        // has it), so it stands in.
+        // Struggle's onModifyMove: type `???`, which nothing resists or is
+        // immune to; Protean and Libero skip it.
         if kind == MoveKind::Struggle {
-            return (self.dex.ids.types.stellar.unwrap_or(t), false);
+            return (self.dex.ids.types.typeless.unwrap_or(t), false);
         }
         if kind == MoveKind::WeatherBall {
             if let Some(w) = self.move_weather() {
@@ -555,6 +568,7 @@ impl Battle {
         target: Option<MonRef>,
         target_loc: i8,
         locked: bool,
+        self_target: bool,
     ) -> Option<bool> {
         // A move Magic Bounce sent back (`move.hasBounced`): no PP, no Choice
         // lock, and it can't be bounced again.
@@ -570,6 +584,18 @@ impl Battle {
         let dex = self.dex.clone();
         let mv = dex.mv(move_id);
         let kind = dex.move_kind[move_id as usize];
+        // The queued action's move, as resolveAction left it: a Curse aimed
+        // at its user (`self_target`) keeps that target type.
+        let self_aimed;
+        let mv = if self_target {
+            self_aimed = crate::dex::Move {
+                target: Target::SelfTarget,
+                ..mv.clone()
+            };
+            &self_aimed
+        } else {
+            mv
+        };
         // Beat Up's ModifyMove; a Round moved up by another Round (the
         // action's sourceEffect, replaced by a locked move's).
         let beat_up;
@@ -633,7 +659,7 @@ impl Battle {
         {
             self.mon_mut(r).vol.choice_lock = Some(move_id);
         }
-        if self.mon(r).status == Status::Frz && mv.has(MoveFlag::Defrost) {
+        if self.mon(r).status == Status::Frz && self.defrosts(r, move_id) {
             let ident = self.ident(r);
             log_line!(self, "|-curestatus|{ident}|frz|[from] move: {}", mv.name);
             let m = self.mon_mut(r);
@@ -765,8 +791,10 @@ impl Battle {
             return Some(false);
         }
         self.smart_target = mv.smart_target;
-        self.active_move.tracks_target =
-            kind == MoveKind::SnipeShot || self.stalwart_on_modify_move(r);
+        // Stalwart's onModifyMove: `move.tracksTarget = move.target !==
+        // 'scripted'` (Counter and Mirror Coat still go where they're sent).
+        self.active_move.tracks_target = kind == MoveKind::SnipeShot
+            || (self.stalwart_on_modify_move(r) && mv.target != Target::Scripted);
         let future = kind == MoveKind::FutureSight;
         let (targets, retarget) = self.get_move_targets(r, target_type, target, move_type, future);
         if let Some(t) = retarget {
@@ -825,11 +853,28 @@ impl Battle {
                     if ck.volatile_duration() > 0 {
                         self.stamp_volatile(r, ResidualVol::Charging);
                     }
+                    // twoturnmove's onStart: a move called by another (Copycat,
+                    // Sleep Talk) aims at the slot of its target as TryMove saw
+                    // it, after redirection (Lightning Rod), or of a random foe
+                    // if that one has fainted.
+                    let mut loc = target_loc;
+                    if called_by.is_some() && mv.target != Target::SelfTarget {
+                        let mut d = last;
+                        if self.mon(d).fainted {
+                            let foes: Small<MonRef> = (0..self.sides[1 - r.0].n_active)
+                                .filter_map(|sl| self.active(1 - r.0, sl))
+                                .collect();
+                            if !foes.is_empty() {
+                                d = self.rng.sample(&foes);
+                            }
+                        }
+                        loc = self.loc_of(r, d);
+                    }
                     let v = &mut self.mon_mut(r).vol;
                     v.two_turn = Some(move_id);
                     v.two_turn_duration = 2;
                     v.charging = Some(move_id);
-                    v.charging_target_loc = target_loc;
+                    v.charging_target_loc = loc;
                     v.charging_duration = ck.volatile_duration();
                     self.attr_move_line(line, "[still]");
                     // twoturnmove's onStart runs PrepareHit (Protean).
@@ -910,8 +955,6 @@ impl Battle {
             MoveKind::FollowMe | MoveKind::RagePowder => self.sides[r.0].n_active > 1,
             MoveKind::AuroraVeil => self.effective_weather() == Some(Weather::Snow),
             MoveKind::SteelRoller => self.field.terrain.is_some(),
-            // onTryHit: a fainted teammate to revive.
-            MoveKind::RevivalBlessing => self.sides[r.0].mons.iter().any(|m| m.fainted),
             MoveKind::ClangorousSoul => {
                 let m = self.mon(r);
                 m.hp as u32 * 100 > m.maxhp as u32 * 33 && m.maxhp != 1
@@ -973,6 +1016,19 @@ impl Battle {
             return Some(false);
         }
         self.run_prepare_hit(r, mv, move_type, bounced);
+        // Healing Wish's onTryHit (after PrepareHit, so Protean and Libero
+        // change the type first): a Pokémon to switch in.
+        if kind == MoveKind::HealingWish && !self.can_switch_side(r.0) {
+            self.fail_move(r);
+            return Some(false);
+        }
+        // Revival Blessing's onTryHit (likewise): a fainted teammate to revive.
+        if kind == MoveKind::RevivalBlessing && !self.sides[r.0].mons.iter().any(|m| m.fainted) {
+            log_line!(self, "|-fail|{ident}");
+            self.attr_move_line(line, "[still]");
+            self.run_move_fail(r, last, mv, kind);
+            return Some(false);
+        }
         // Fling's PrepareHit: the thrown item's power and secondary effect.
         let flung;
         let mv = match fling_move {
@@ -998,38 +1054,86 @@ impl Battle {
             mv.target,
             Target::All | Target::AllySide | Target::FoeSide | Target::AllyTeam
         ) {
-            // TryHitSide: Magic Bounce on the target side (`onAllyTryHitSide`;
-            // its holders sort by Speed stat) sends a reflectable move back.
-            if !bounced && mv.target == Target::FoeSide && mv.has(MoveFlag::Reflectable) {
+            // TryHitSide on the move's first target (the first active
+            // Pokémon of the side it aims at): the `onAllyTryHitSide`
+            // handlers of that side, sorted by plain Speed stat
+            // (`getStat('spe', true, true)`). Magic Bounce sends a reflectable
+            // foe-side move back (stopping the event); Sap Sipper drinks a
+            // Grass move aimed at its own side; Soundproof announces a sound
+            // move. A suppressed handler still sorts.
+            if matches!(
+                mv.target,
+                Target::FoeSide | Target::AllySide | Target::AllyTeam
+            ) {
                 use crate::abilities::{compare_mod, ModHandler};
-                let side = 1 - r.0;
-                let mut holders: Small<(MonRef, ModHandler)> = (0..self.sides[side].n_active)
+                #[derive(Clone, Copy)]
+                enum A {
+                    MagicBounce,
+                    SapSipper,
+                    Soundproof,
+                }
+                let side = if mv.target == Target::FoeSide {
+                    1 - r.0
+                } else {
+                    r.0
+                };
+                let mut holders: Small<(MonRef, A, ModHandler)> = (0..self.sides[side].n_active)
                     .filter_map(|sl| self.active(side, sl))
                     .filter(|&h| self.mon(h).hp > 0 && !self.mon(h).fainted)
-                    .filter(|&h| self.raw_ability_kind(h) == crate::kinds::AbilityKind::MagicBounce)
-                    // Showdown sorts these by the plain Speed stat
-                    // (`getStat('spe', true, true)`), not the current speed.
-                    .map(|h| {
-                        (
+                    .filter_map(|h| {
+                        let k = match self.dex.ability(self.mon(h).ability).id.as_str() {
+                            "magicbounce" => A::MagicBounce,
+                            "sapsipper" => A::SapSipper,
+                            "soundproof" => A::Soundproof,
+                            _ => return None,
+                        };
+                        Some((
                             h,
+                            k,
                             ModHandler::new(0, self.mon(h).stats[Stat::Spe as usize] as i32, 7),
-                        )
+                        ))
                     })
                     .collect();
                 if holders.len() > 1 {
-                    self.speed_sort_by(&mut holders, |a, b| compare_mod(&a.1, &b.1));
+                    self.speed_sort_by(&mut holders, |a, b| compare_mod(&a.2, &b.2));
                 }
-                // The first holder whose ability works (not suppressed by Mold
-                // Breaker) and that isn't semi-invulnerable bounces it.
-                let bouncer = holders.iter().find(|(h, _)| {
-                    !self.ability_suppressed(*h)
-                        && !self.ignoring_ability(*h)
-                        && !self.mon(*h).revived
-                        && !self.semi_invulnerable(*h)
-                });
-                if let Some(&(h, _)) = bouncer {
-                    self.bounce_move(r, h, move_id);
-                    return Some(false);
+                // `target.isSemiInvulnerable()` reads the event's target, not
+                // the holder: a holder mid-Dive still bounces.
+                let first = (0..self.sides[side].n_active).find_map(|sl| self.active(side, sl));
+                let hidden = first.is_some_and(|f| self.semi_invulnerable(f));
+                let works = |b: &Battle, h: MonRef| {
+                    !b.ability_suppressed(h) && !b.ignoring_ability(h) && !b.mon(h).revived
+                };
+                for &(h, k, _) in holders.iter() {
+                    if !works(self, h) {
+                        continue;
+                    }
+                    match k {
+                        A::MagicBounce
+                            if !bounced
+                                && side != r.0
+                                && mv.has(MoveFlag::Reflectable)
+                                && !hidden =>
+                        {
+                            self.bounce_move(r, h, move_id);
+                            return Some(false);
+                        }
+                        A::SapSipper
+                            if h != r
+                                && side == r.0
+                                && move_type == self.dex.type_id("Grass").unwrap_or(NO_TYPE) =>
+                        {
+                            let mut b = [0i8; 7];
+                            b[Boost::Atk as usize] = 1;
+                            let a = self.mon(h).ability;
+                            self.boost(h, &b, None, EffectRef::Ability(a), false, false);
+                        }
+                        A::Soundproof if mv.has(MoveFlag::Sound) => {
+                            let hi = self.ident(h);
+                            log_line!(self, "|-immune|{hi}|[from] ability: Soundproof");
+                        }
+                        _ => {}
+                    }
                 }
             }
             let applied = match kind {
@@ -1062,7 +1166,7 @@ impl Battle {
                     }
                     true
                 }
-                MoveKind::PerishSong => self.perish_song(r, mv),
+                MoveKind::PerishSong => self.perish_song(r, mv, move_type),
                 MoveKind::StealthRock => self.add_stealth_rock(1 - r.0),
                 MoveKind::Gravity => self.add_gravity(),
                 MoveKind::FairyLock => self.add_fairy_lock(),
@@ -1179,8 +1283,10 @@ impl Battle {
         if checks_immunity {
             let mut next = ActiveList::new();
             for &t in &live {
-                // A smart-targeting move's immunity goes unannounced.
-                if t != r && !self.run_immunity(t, move_type, !smart) {
+                // A smart-targeting move's immunity goes unannounced. The
+                // user isn't exempt: a locked Thrash aimed back at its Ghost
+                // user (no foe left in range) has no effect.
+                if !self.run_immunity(t, move_type, !smart) {
                     failed = true;
                     continue;
                 }
@@ -1214,8 +1320,11 @@ impl Battle {
         // 4. Accuracy.
         let mut next = ActiveList::new();
         for &t in &live {
-            // A one-hit KO can't hit a higher level or (Sheer Cold) an Ice type.
-            if let Some(immune_type) = mv.ohko {
+            self.active_move.active_target = Some(t);
+            // A one-hit KO can't hit a higher level or (Sheer Cold) an Ice
+            // type, unless the target is semi-invulnerable (No Guard reaches
+            // it), where Showdown skips the check.
+            if let Some(immune_type) = mv.ohko.filter(|_| !self.semi_invulnerable(t)) {
                 let (lu, lt) = (self.mon(r).level, self.mon(t).level);
                 if lu < lt || immune_type.is_some_and(|ty| self.has_type_of(t, ty)) {
                     let ti = self.ident(t);
@@ -1309,6 +1418,15 @@ impl Battle {
             if !hit {
                 live.clear();
             }
+            // The hit loop's gotAttacked on every target it kept (no damage
+            // number for a status move).
+            if hit {
+                for t in std::mem::take(&mut self.active_move.status_reached) {
+                    if t != r {
+                        self.got_attacked_by_status(t, r, mv.idx);
+                    }
+                }
+            }
             // Status moves go through the same hit loop (Champions
             // `hitStepMoveHitLoop`): eachEvent('Update') after the hit, and
             // again after the loop, when the move did something.
@@ -1319,7 +1437,12 @@ impl Battle {
                 self.faint_messages_check(user_down);
                 self.run_update();
                 // afterMoveSecondaryEvent on the targets a substitute didn't take.
-                let after = self.after_move_secondary_targets(&hit_list);
+                // Targets are Pokémon: after Ally Switch they follow theirs.
+                let after: Small<MonRef> = self
+                    .after_move_secondary_targets(&hit_list)
+                    .into_iter()
+                    .map(|t| self.follow_relocation(t))
+                    .collect();
                 if self.ally_puff_on_try_hit(r, &live, kind) {
                     // A damaging move to Showdown (Pollen Puff healing an
                     // ally): Red Card, Eject Button and the rest react.
@@ -1357,8 +1480,10 @@ impl Battle {
             let effect = self.move_ref(mv);
             self.boost_listed(r, &b, Some(r), effect, false, true);
         }
-        // AfterMoveSecondarySelf, unless Sheer Force dropped the secondaries.
-        if !mv.sheer_force {
+        // AfterMoveSecondarySelf, unless Sheer Force dropped the secondaries
+        // (`suppressingSecondaries()`: the user must still have Sheer Force,
+        // which Wandering Spirit or Mummy may have taken by now).
+        if !(mv.sheer_force && self.has_ability(r, crate::kinds::AbilityKind::SheerForce)) {
             // The event's target: the last of the move's targets, as chosen
             // (useMoveInner's `target`), hit or not.
             let last_target = last;
@@ -1504,6 +1629,21 @@ impl Battle {
     /// `runEvent('ModifyMove')` for the abilities on the user: Stance
     /// Change (priority 1) changes forme; Mold Breaker makes the move ignore
     /// abilities.
+    /// frz's onBeforeMove and onModifyMove: a defrost move thaws its user,
+    /// except Burn Up from a user that isn't Fire type (which goes through
+    /// the freeze check).
+    fn defrosts(&self, r: MonRef, id: MoveId) -> bool {
+        let mv = self.dex.mv(id);
+        mv.has(MoveFlag::Defrost)
+            && !(self.dex.move_kind[id as usize] == MoveKind::BurnUp
+                && !self
+                    .dex
+                    .ids
+                    .types
+                    .fire
+                    .is_some_and(|f| self.has_type_of(r, f)))
+    }
+
     pub(crate) fn run_ability_modify_move(&mut self, r: MonRef, mv: &Move) {
         let kind = self.ability_kind(r);
         self.active_move.ignore_evasion = (kind == AbilityKind::KeenEye).then_some(r);
@@ -1559,17 +1699,16 @@ impl Battle {
     /// `getTarget` for a `tracksTarget` move (Snipe Shot) or a Stalwart
     /// user: the original target while it is still active, wherever it now
     /// stands.
-    pub(crate) fn target_ignoring_redirection(&self, r: MonRef, tracks: bool) -> Option<MonRef> {
+    pub(crate) fn target_ignoring_redirection(
+        &self,
+        r: MonRef,
+        tracks: bool,
+        original: Option<SideName>,
+    ) -> Option<MonRef> {
         if !tracks && !self.has_ability(r, AbilityKind::Stalwart) {
             return None;
         }
-        let user = (r.0, self.mon(r).name.clone());
-        let (_, target) = self
-            .turn_state
-            .original_targets
-            .iter()
-            .find(|(u, _)| *u == user)?;
-        let (s, name) = target.as_ref()?;
+        let (s, name) = original.as_ref()?;
         let i = self.sides[*s].mons.iter().position(|m| &m.name == name)?;
         let m = &self.sides[*s].mons[i];
         (m.is_active && !m.fainted && !m.revived).then_some((*s, i))

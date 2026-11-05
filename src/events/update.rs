@@ -70,7 +70,9 @@ impl Battle {
     /// the field.
     pub(crate) fn syrup_bomb_on_update(&mut self, r: MonRef) {
         if let Some(src) = self.mon(r).vol.syrup_bomb {
-            if !self.mon(src).is_active || self.mon(src).fainted {
+            // removeVolatile does nothing without HP (the holder fell to
+            // recoil as its thrower fainted).
+            if self.mon(r).hp > 0 && (!self.mon(src).is_active || self.mon(src).fainted) {
                 let v = &mut self.mon_mut(r).vol;
                 v.syrup_bomb = None;
                 v.syrup_bomb_duration = 0;
@@ -205,23 +207,33 @@ impl Battle {
         }
         // Oblivious ends an Attract, then a Taunt, that got through (Mold
         // Breaker's).
+        // removeVolatile does nothing without HP (a Pokémon Wandering
+        // Spirit gave Oblivious as it fell): the activation shows, but the
+        // volatile and the end message its onEnd sends stay.
+        let alive = self.mon(r).hp > 0;
         if self.mon(r).vol.attract.is_some() && self.ability_id(r) == "oblivious" {
             let ri = self.ident(r);
             log_line!(self, "|-activate|{ri}|ability: Oblivious");
-            self.end_attract(r);
+            if alive {
+                self.end_attract(r);
+            }
             log_line!(self, "|-end|{ri}|move: Attract|[from] ability: Oblivious");
         }
         if self.mon(r).vol.taunt > 0 && self.ability_id(r) == "oblivious" {
             let ident = self.ident(r);
             log_line!(self, "|-activate|{ident}|ability: Oblivious");
-            self.mon_mut(r).vol.taunt = 0;
-            log_line!(self, "|-end|{ident}|move: Taunt");
+            if alive {
+                self.mon_mut(r).vol.taunt = 0;
+                log_line!(self, "|-end|{ident}|move: Taunt");
+            }
         }
         if self.mon(r).vol.confusion > 0 && self.ability_id(r) == "owntempo" {
             let ident = self.ident(r);
             log_line!(self, "|-activate|{ident}|ability: Own Tempo");
-            self.mon_mut(r).vol.confusion = 0;
-            log_line!(self, "|-end|{ident}|confusion");
+            if alive {
+                self.mon_mut(r).vol.confusion = 0;
+                log_line!(self, "|-end|{ident}|confusion");
+            }
         }
     }
 

@@ -152,7 +152,7 @@ impl Battle {
     // Each argument is a distinct input of Showdown's `getDamage`; a struct used
     // by this one caller would only rename them.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn move_damage(
+    pub(crate) fn move_damage(
         &mut self,
         r: MonRef,
         t: MonRef,
@@ -742,8 +742,9 @@ impl Battle {
         if self.mon(t).vol.endure {
             hs.push(ModHandler::new(-10, speed, 2));
         }
+        // A suppressed Damp (Gastro Acid) still sorts; it's skipped when run.
         for p in self.all_active() {
-            if self.mon(p).hp > 0 && self.has_ability(p, AbilityKind::Damp) {
+            if self.mon(p).hp > 0 && self.raw_ability_kind(p) == AbilityKind::Damp {
                 hs.push(ModHandler::new(0, self.mon(p).speed, 7));
             }
         }
@@ -806,7 +807,16 @@ impl Battle {
             .dex
             .type_id("Flying")
             .is_some_and(|f| self.has_type_of(tgt, f));
-        if ground && flying && self.item_kind(tgt) == Some(crate::kinds::ItemKind::IronBall) {
+        // Iron Ball's handler returns at once under Gravity, Ingrain or
+        // Smack Down: the types then count as they are (a grounded Flying
+        // type takes Ground neutrally; its other type still matters).
+        let v = &self.mon(tgt).vol;
+        let grounded_anyway = v.ingrain || v.smack_down || self.field.gravity > 0;
+        if ground
+            && flying
+            && !grounded_anyway
+            && self.item_kind(tgt) == Some(crate::kinds::ItemKind::IronBall)
+        {
             0
         } else {
             type_mod
@@ -836,6 +846,14 @@ impl Battle {
         self.dex.type_id(name).unwrap_or(t)
     }
 
+    /// Comeuppance's and Metal Burst's damage in half points: 1.5 times the
+    /// last damage taken this turn, `|| 1` when that was 0 (and 0 with
+    /// none). Showdown keeps the half; only a substitute takes it unrounded.
+    pub(crate) fn counter_burst_halves(&self, r: MonRef) -> u32 {
+        self.last_damaged_by(r)
+            .map_or(0, |a| if a.damage == 0 { 2 } else { a.damage * 3 })
+    }
+
     /// A `damageCallback`: the damage the move deals instead of the formula.
     pub(crate) fn damage_callback(&self, r: MonRef, t: MonRef, kind: MoveKind) -> Option<u32> {
         match kind {
@@ -843,10 +861,7 @@ impl Battle {
             MoveKind::MirrorCoat => {
                 Some(self.mon(r).vol.mirror_coat.map_or(0, |c| c.damage.max(1)))
             }
-            MoveKind::Comeuppance | MoveKind::MetalBurst => Some(
-                self.last_damaged_by(r)
-                    .map_or(0, |a| (a.damage * 3 / 2).max(1)),
-            ),
+            MoveKind::Comeuppance | MoveKind::MetalBurst => Some(self.counter_burst_halves(r) / 2),
             MoveKind::Endeavor => {
                 Some((self.mon(t).hp as u32).saturating_sub(self.mon(r).hp as u32))
             }

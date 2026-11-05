@@ -1,0 +1,161 @@
+name: Parity at scale
+
+# Exact agreement with the pinned Showdown on many games at once, run by hand
+# (Actions > Parity at scale > Run workflow). Each shard runs on its own runner
+# and plays its own range of games (--first), so no game repeats; both pools
+# play every range, synthetic teams (every supported move, item and ability)
+# and the VGCPastes tournament teams in pools/. The summary job adds up every
+# shard, writes a table to the run's summary page, and fails if any game
+# diverged or any shard is missing. The defaults play 1,000,000 games.
+
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "Shards per pool, each on its own runner (1-128)"
+        default: "50"
+      games:
+        description: "Games per shard"
+        default: "10000"
+      seed:
+        description: "Seed for teams and choices (empty: this run's id)"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      seed: ${{ steps.plan.outputs.seed }}
+      games: ${{ steps.plan.outputs.games }}
+    steps:
+      - id: plan
+        env:
+          SHARDS: ${{ inputs.shards }}
+          GAMES: ${{ inputs.games }}
+          SEED: ${{ inputs.seed }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          # Inputs reach the shell only as environment variables, checked as numbers.
+          [[ "$SHARDS" =~ ^[0-9]+$ ]] && (( SHARDS >= 1 && SHARDS <= 128 )) || { echo "shards must be 1-128"; exit 1; }
+          [[ "$GAMES" =~ ^[0-9]+$ ]] && (( GAMES >= 1 )) || { echo "games must be a positive integer"; exit 1; }
+          seed="${SEED:-$RUN_ID}"
+          [[ "$seed" =~ ^[0-9]+$ ]] || { echo "seed must be a non-negative integer"; exit 1; }
+          echo "shards=$(python3 -c "import json, sys; print(json.dumps(list(range(int(sys.argv[1])))))" "$SHARDS")" >> "$GITHUB_OUTPUT"
+          echo "games=$GAMES" >> "$GITHUB_OUTPUT"
+          echo "seed=$seed" >> "$GITHUB_OUTPUT"
+          echo "Planned $SHARDS shards x 2 pools x $GAMES games, seed $seed" >> "$GITHUB_STEP_SUMMARY"
+
+  shard:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pool: [synthetic, vgcpastes]
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache the pinned Showdown checkout
+        uses: actions/cache@v4
+        with:
+          path: third_party/pokemon-showdown
+          key: showdown-${{ hashFiles('refsim/SHOWDOWN_COMMIT') }}
+
+      - name: Install the package
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e .
+
+      - name: Build Pokémon Showdown at the pinned commit
+        run: ./scripts/setup_showdown.sh
+
+      - name: Export the Reg M-C format
+        run: .venv/bin/python -c "import ninjask; ninjask.load('gen9championsvgc2026regmc')"
+
+      - name: Play the shard in both simulators and compare
+        env:
+          POOL: ${{ matrix.pool }}
+          SHARD: ${{ matrix.shard }}
+          GAMES: ${{ needs.plan.outputs.games }}
+          SEED: ${{ needs.plan.outputs.seed }}
+        run: |
+          first=$(( SHARD * GAMES ))
+          if [ "$POOL" = synthetic ]; then teams=(--synthetic); else teams=(--pool pools/vgcpastes-regmc.txt); fi
+          set +e
+          .venv/bin/python scripts/check_reference.py "${teams[@]}" --games "$GAMES" --first "$first" --seed "$SEED" --workers "$(nproc)" --show 5 | tee out.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          .venv/bin/python - "$POOL" "$SHARD" "$first" "$GAMES" "$SEED" "$code" <<'PY'
+          import ast, json, sys
+          pool, shard, first, games, seed, code = sys.argv[1:]
+          counts = [ast.literal_eval(l) for l in open("out.txt") if l.startswith("{")]
+          c = counts[-1] if counts else {}
+          json.dump({"pool": pool, "shard": int(shard), "first": int(first), "games": int(games), "seed": int(seed),
+                     "matched": c.get("matched", 0), "diverged": c.get("diverged", 0), "inputs": c.get("inputs", 0),
+                     "exit": int(code)}, open("result.json", "w"))
+          PY
+          exit "$code"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ matrix.pool }}-${{ matrix.shard }}
+          path: |
+            result.json
+            out.txt
+
+  summary:
+    needs: [plan, shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: result-*
+          path: results
+      - name: Add up the shards
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          python3 - "$SHARDS" <<'PY'
+          import glob, json, os, sys
+          expected = 2 * int(sys.argv[1])
+          rows = [json.load(open(p)) for p in glob.glob("results/*/result.json")]
+          by_pool = {}
+          for r in rows:
+              t = by_pool.setdefault(r["pool"], {"shards": 0, "games": 0, "matched": 0, "diverged": 0, "inputs": 0})
+              t["shards"] += 1
+              for k in ("games", "matched", "diverged", "inputs"):
+                  t[k] += r[k]
+          lines = ["| Pool | Shards | Games | Matched | Diverged | Inputs compared |", "|---|---:|---:|---:|---:|---:|"]
+          for pool, t in sorted(by_pool.items()):
+              lines.append(f"| {pool} | {t['shards']} | {t['games']:,} | {t['matched']:,} | {t['diverged']:,} | {t['inputs']:,} |")
+          total = sum(t["matched"] for t in by_pool.values())
+          diverged = sum(t["diverged"] for t in by_pool.values())
+          bad = [r for r in rows if r["diverged"] or r["exit"]]
+          lines.append("")
+          lines.append(f"**{total:,} games matched Showdown exactly; {diverged:,} diverged; {len(rows)} of {expected} shards reported.**")
+          if bad:
+              lines.append("Shards with a divergence or a failure (their out.txt artifact has the details): " + ", ".join(f"{r['pool']} {r['shard']}" for r in sorted(bad, key=lambda r: (r["pool"], r["shard"]))))
+          open(os.environ["GITHUB_STEP_SUMMARY"], "a").write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          sys.exit(1 if bad or len(rows) != expected else 0)
+          PY

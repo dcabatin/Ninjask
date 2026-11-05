@@ -55,7 +55,7 @@ impl Battle {
                 }
                 for t in targets {
                     // A substitute makes the foe immune.
-                    if self.mon(t).vol.substitute > 0 {
+                    if self.mon(t).vol.substitute_halves > 0 {
                         let ti = self.ident(t);
                         log_line!(self, "|-immune|{ti}");
                         continue;
@@ -193,6 +193,11 @@ impl Battle {
             AbilityKind::Unnerve => self.mon_mut(r).ability_state.unnerved = Some(false),
             AbilityKind::SupremeOverlord => self.supreme_overlord_on_end(r),
             AbilityKind::SuppressWeather => self.air_lock_on_end(r),
+            AbilityKind::Opportunist => self.mon_mut(r).ability_state.opp_boosts = None,
+            // Illusion's onEnd (its ability replaced or suppressed: Simple
+            // Beam, Worry Seed, Entrainment, Gastro Acid): the disguise drops,
+            // unless the Pokémon is being called back.
+            AbilityKind::Illusion if !self.turn_state.called_back => self.end_illusion(r),
             _ => {}
         }
     }
@@ -256,7 +261,8 @@ impl Battle {
 
     /// An ability's end (`onEnd`): when replaced, switched out, or fainting.
     pub(crate) fn air_lock_on_end(&mut self, r: MonRef) {
-        if self.has_ability(r, AbilityKind::SuppressWeather) {
+        // singleEvent('End') isn't suppressed: Gastro Acid doesn't stop it.
+        if self.raw_ability_kind(r) == AbilityKind::SuppressWeather {
             self.mon_mut(r).ability_state.ending = Some(true);
             self.weather_change_event();
         }

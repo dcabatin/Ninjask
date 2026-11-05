@@ -27,7 +27,9 @@ pub(crate) enum HandlerKind {
     Status(MonRef, Status),
     SideCondition(usize, SideCond),
     TrickRoom,
-    Terrain,
+    /// The terrain when the handlers were collected, and its duration then:
+    /// the handler holds that terrain's own state.
+    Terrain(Terrain, u8),
     /// A volatile with only a duration: one handler each, as in Showdown,
     /// so that equal ones tie (and are shuffled) the same way.
     Volatile(MonRef, DurationVolatile),
@@ -501,7 +503,7 @@ impl Battle {
         }
         if let Some(t) = self.field.terrain {
             handlers.push(Handler {
-                kind: HandlerKind::Terrain,
+                kind: HandlerKind::Terrain(t, self.field.terrain_turns),
                 order: order(self, t.id(), "onFieldResidualOrder", 27),
                 speed: 0,
                 sub_order: self.cond_u32(t.id(), "onFieldResidualSubOrder", 7),
@@ -533,11 +535,10 @@ impl Battle {
                     sub_order: 3,
                 });
             }
-            for sl in 0..self.sides[s].n_active {
-                let Some(r) = self.active(s, sl) else {
-                    continue;
-                };
-                self.mon_residual_handlers(r, &mut handlers);
+            // side.active: whoever is in the slot, fainted or revived and
+            // not yet sent back in (Revival Blessing) included.
+            for sl in 0..self.sides[s].n_active.min(self.sides[s].mons.len()) {
+                self.mon_residual_handlers((s, sl), &mut handlers);
             }
         }
         self.turn_state.sorting = false;
@@ -669,8 +670,20 @@ impl Battle {
                 }
                 self.field.trick_room == 0
             }
-            HandlerKind::Terrain => {
-                if self.field.terrain.is_none() || self.field.terrain_turns == 0 {
+            HandlerKind::Terrain(t, turns) => {
+                // A terrain set earlier in the residuals (Seed Sower on a
+                // Future Sight hit) has a new state: Showdown counts down the
+                // collected terrain's own (old) state, then skips the
+                // handler; an old state running out still calls
+                // clearTerrain, which ends the new terrain.
+                if self.field.terrain != Some(t) {
+                    if turns == 1 && self.field.terrain.is_some() {
+                        self.clear_terrain();
+                        return Some(true);
+                    }
+                    return None;
+                }
+                if self.field.terrain_turns == 0 {
                     return None;
                 }
                 self.field.terrain_turns -= 1;
@@ -682,7 +695,13 @@ impl Battle {
                 }
             }
             HandlerKind::Leftovers(r) => {
-                if self.item_kind(r) == Some(ItemKind::Leftovers) {
+                // takeItem clears the item's state in place, so a holder
+                // whose Leftovers left during the residuals (Symbiosis) still
+                // heals: onResidual doesn't look at the item. Only setItem
+                // (another item) gives a new state, which skips the handler.
+                let taken =
+                    self.mon(r).item.is_none() && !self.mon(r).revived && !self.ignoring_item(r);
+                if taken || self.item_kind(r) == Some(ItemKind::Leftovers) {
                     let amount = (self.mon(r).maxhp as u32 / 16).max(1);
                     self.ripen_on_try_heal_leftovers(r);
                     self.heal(r, amount, "|[from] item: Leftovers");
@@ -883,16 +902,28 @@ impl Battle {
             }
             HandlerKind::Moody(r) => {
                 let m = self.mon(r);
-                if m.fainted || !m.is_active || !self.has_ability(r, AbilityKind::Moody) {
+                // A replaced ability (its state is gone) skips the handler; a
+                // suppressed one (Gastro Acid) does nothing, but fieldEvent's
+                // faint check still follows it.
+                if m.fainted || !m.is_active || self.raw_ability_kind(r) != AbilityKind::Moody {
                     return None;
+                }
+                if !self.has_ability(r, AbilityKind::Moody) {
+                    return Some(false);
                 }
                 self.moody(r);
                 false
             }
             HandlerKind::Healer(r) => {
                 let m = self.mon(r);
-                if m.fainted || !m.is_active || !self.has_ability(r, AbilityKind::Healer) {
+                // A replaced ability (its state is gone) skips the handler; a
+                // suppressed one (Gastro Acid) does nothing, but fieldEvent's
+                // faint check still follows it.
+                if m.fainted || !m.is_active || self.raw_ability_kind(r) != AbilityKind::Healer {
                     return None;
+                }
+                if !self.has_ability(r, AbilityKind::Healer) {
+                    return Some(false);
                 }
                 // Champions: a 1 in 2 chance for each statused adjacent ally.
                 for ally in self.allies_of(r) {
@@ -919,16 +950,28 @@ impl Battle {
             }
             HandlerKind::Harvest(r) => {
                 let m = self.mon(r);
-                if m.fainted || !m.is_active || !self.has_ability(r, AbilityKind::Harvest) {
+                // A replaced ability (its state is gone) skips the handler; a
+                // suppressed one (Gastro Acid) does nothing, but fieldEvent's
+                // faint check still follows it.
+                if m.fainted || !m.is_active || self.raw_ability_kind(r) != AbilityKind::Harvest {
                     return None;
+                }
+                if !self.has_ability(r, AbilityKind::Harvest) {
+                    return Some(false);
                 }
                 self.harvest(r);
                 false
             }
             HandlerKind::ShedSkin(r) => {
                 let m = self.mon(r);
-                if m.fainted || !m.is_active || !self.has_ability(r, AbilityKind::ShedSkin) {
+                // A replaced ability (its state is gone) skips the handler; a
+                // suppressed one (Gastro Acid) does nothing, but fieldEvent's
+                // faint check still follows it.
+                if m.fainted || !m.is_active || self.raw_ability_kind(r) != AbilityKind::ShedSkin {
                     return None;
+                }
+                if !self.has_ability(r, AbilityKind::ShedSkin) {
+                    return Some(false);
                 }
                 if m.hp > 0 && m.status != Status::None && self.rng.chance(33, 100) {
                     let ri = self.ident(r);
@@ -939,8 +982,14 @@ impl Battle {
             }
             HandlerKind::Pickup(r) => {
                 let m = self.mon(r);
-                if m.fainted || !m.is_active || !self.has_ability(r, AbilityKind::Pickup) {
+                // A replaced ability (its state is gone) skips the handler; a
+                // suppressed one (Gastro Acid) does nothing, but fieldEvent's
+                // faint check still follows it.
+                if m.fainted || !m.is_active || self.raw_ability_kind(r) != AbilityKind::Pickup {
                     return None;
+                }
+                if !self.has_ability(r, AbilityKind::Pickup) {
+                    return Some(false);
                 }
                 self.pickup(r);
                 false
@@ -1003,16 +1052,28 @@ impl Battle {
             }
             HandlerKind::CudChew(r) => {
                 let m = self.mon(r);
-                if m.fainted || !m.is_active || !self.has_ability(r, AbilityKind::CudChew) {
+                // A replaced ability (its state is gone) skips the handler; a
+                // suppressed one (Gastro Acid) does nothing, but fieldEvent's
+                // faint check still follows it.
+                if m.fainted || !m.is_active || self.raw_ability_kind(r) != AbilityKind::CudChew {
                     return None;
+                }
+                if !self.has_ability(r, AbilityKind::CudChew) {
+                    return Some(false);
                 }
                 self.cud_chew(r);
                 false
             }
             HandlerKind::Hydration(r) => {
                 let m = self.mon(r);
-                if m.fainted || !m.is_active || !self.has_ability(r, AbilityKind::Hydration) {
+                // A replaced ability (its state is gone) skips the handler; a
+                // suppressed one (Gastro Acid) does nothing, but fieldEvent's
+                // faint check still follows it.
+                if m.fainted || !m.is_active || self.raw_ability_kind(r) != AbilityKind::Hydration {
                     return None;
+                }
+                if !self.has_ability(r, AbilityKind::Hydration) {
+                    return Some(false);
                 }
                 if m.status != Status::None && self.effective_weather() == Some(Weather::Rain) {
                     let ri = self.ident(r);
@@ -1079,7 +1140,9 @@ impl Battle {
             None => true,
             Some(s) => {
                 let sm = self.mon(s);
-                !sm.is_active || sm.fainted || sm.hp == 0 || sm.active_turns == 0
+                // A user revived in its slot (Revival Blessing) isn't active
+                // until it is sent back in.
+                !sm.is_active || sm.revived || sm.fainted || sm.hp == 0 || sm.active_turns == 0
             }
         };
         if gone {

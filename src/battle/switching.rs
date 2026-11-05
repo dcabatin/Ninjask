@@ -9,7 +9,8 @@ use crate::state::*;
 #[derive(Clone, Copy, Debug)]
 enum SwitchInHandler {
     Ability,
-    Item,
+    /// The item held when the handlers were collected (its state).
+    Item(crate::dex::types::ItemId),
     WhiteHerb,
     /// Toxic Spikes on the switcher's side (a side condition: subOrder 4).
     ToxicSpikes,
@@ -92,7 +93,9 @@ impl Battle {
                 handlers.push((r, SwitchInHandler::Ability, priority, key, 7, 0));
             }
             if let Some(priority) = self.item_switch_in_priority(r) {
-                handlers.push((r, SwitchInHandler::Item, priority, key, 8, 0));
+                if let Some(item) = self.mon(r).item {
+                    handlers.push((r, SwitchInHandler::Item(item), priority, key, 8, 0));
+                }
             }
             if self.slot_reacts_to_switch_in(r) {
                 handlers.push((r, SwitchInHandler::HealingWish, 0, key, 3, 0));
@@ -138,7 +141,15 @@ impl Battle {
                     self.air_lock_on_switch_in(r);
                     self.run_start(r)
                 }
-                SwitchInHandler::Item => self.item_on_start(r),
+                // The handler holds the item's state: a new item (setItem:
+                // Symbiosis) skips it; one taken (cleared in place) still
+                // runs the collected item's onStart, so a balloon given away
+                // is announced for its old holder.
+                SwitchInHandler::Item(item) => match self.mon(r).item {
+                    Some(now) if now == item => self.item_on_switch_in(r),
+                    Some(_) => {}
+                    None => self.taken_item_on_switch_in(r, item),
+                },
                 SwitchInHandler::WhiteHerb => self.white_herb_check(r),
                 SwitchInHandler::Opportunist => self.opportunist_release(r),
                 SwitchInHandler::ToxicSpikes => self.toxic_spikes_switch_in(r),
@@ -217,7 +228,6 @@ impl Battle {
             None
         };
         if let Some(o) = old_active {
-            self.partial_trap_source_leaves((s, o));
             if self.sides[s].mons[o].hp > 0 {
                 // BeforeSwitchOut and eachEvent('Update') (not for a drag, nor
                 // when the switch request ran BeforeSwitchOut), then SwitchOut.
@@ -314,8 +324,22 @@ impl Battle {
             m.toxic_stage = 0;
         }
         if let Some((vol, boosts)) = carried {
+            // copyVolatileFrom starts with the newcomer's clearVolatile
+            // (Champions: timesAttacked too): a revived Pokémon hit on the
+            // turn it fainted keeps those only when it comes in plainly.
             m.vol = vol;
+            // knownType and apparentType are the Pokémon's own, not
+            // volatiles: the newcomer's clearVolatile makes its types known.
+            m.vol.type_unknown = false;
+            m.vol.apparent_types = None;
             m.boosts = boosts;
+            m.times_attacked = 0;
+            m.attacked_by.clear();
+            m.hurt_this_turn = None;
+            m.last_move = None;
+            m.move_this_turn_result = None;
+            m.move_last_turn_result = None;
+            m.moved_this_turn = false;
         }
         let who = (s, slot);
         self.gastro_acid_on_copy(who);
@@ -406,10 +430,15 @@ impl Battle {
             // The ability's End, then the forme reverts (Showdown faintMessages).
             self.air_lock_on_end(r);
             self.supreme_overlord_on_end(r);
+            // Opportunist's onEnd forgets the boosts it was holding.
+            if self.raw_ability_kind(r) == AbilityKind::Opportunist {
+                self.mon_mut(r).ability_state.opp_boosts = None;
+            }
             self.clear_transform(r);
             self.revert_forme(r);
             self.clear_volatile_links(r);
             let types = self.dex.species(self.mon(r).species).types;
+            self.reset_type_knowledge(r);
             let m = self.mon_mut(r);
             m.fainted = true;
             m.types = types;
@@ -470,18 +499,6 @@ impl Battle {
         }
     }
 
-    /// A Pokémon leaves its slot (switched out, dragged out or replaced after
-    /// fainting): partial traps it set lose their source.
-    pub(crate) fn partial_trap_source_leaves(&mut self, r: MonRef) {
-        for s in 0..2 {
-            for m in self.sides[s].mons.iter_mut() {
-                if m.vol.partial_trap_source == Some(r) {
-                    m.vol.partial_trap_source = None;
-                }
-            }
-        }
-    }
-
     /// `DragOut` (after Guard Dog and Suction Cups, priority 1): Ingrain
     /// holds the Pokémon in place.
     pub(crate) fn ingrain_on_drag_out(&mut self, t: MonRef) -> bool {
@@ -538,26 +555,39 @@ impl Battle {
         // The ability's End follows, and End isn't suppressed: Gastro Acid
         // (cleared with the volatiles anyway) mustn't hide the ability from it.
         self.mon_mut(r).vol.gastro_acid = false;
-        // Receiver's onAllyFaint joins Destiny Bond's onFaint in the sort.
+        // Receiver's onAllyFaint joins Destiny Bond's onFaint in the sort,
+        // and so does the fainting Pokémon's own Illusion (its onFaint only
+        // drops the disguise, which fainting does here anyway).
         let receivers: Small<MonRef> = self
             .allies_of(r)
             .into_iter()
             .filter(|&a| self.has_ability(a, AbilityKind::Receiver))
             .collect();
-        if !receivers.is_empty() {
+        let illusion = self.raw_ability_kind(r) == AbilityKind::Illusion;
+        if !receivers.is_empty() || (illusion && self.mon(r).vol.destiny_bond) {
             use crate::abilities::{compare_mod, ModHandler};
-            let mut hs: Small<(ModHandler, Option<MonRef>)> = receivers
+            #[derive(Clone, Copy)]
+            enum H {
+                Receiver(MonRef),
+                DestinyBond,
+                Illusion,
+            }
+            let mut hs: Small<(ModHandler, H)> = receivers
                 .iter()
-                .map(|&a| (ModHandler::new(0, self.mon(a).speed, 7), Some(a)))
+                .map(|&a| (ModHandler::new(0, self.mon(a).speed, 7), H::Receiver(a)))
                 .collect();
             if self.mon(r).vol.destiny_bond {
-                hs.push((ModHandler::new(0, self.mon(r).speed, 2), None));
+                hs.push((ModHandler::new(0, self.mon(r).speed, 2), H::DestinyBond));
+            }
+            if illusion {
+                hs.push((ModHandler::new(0, self.mon(r).speed, 7), H::Illusion));
             }
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.0, &b.0));
-            for &(_, holder) in hs.iter() {
-                match holder {
-                    Some(h) => self.receiver(h, r),
-                    None => self.destiny_bond_faint(r),
+            for &(_, h) in hs.iter() {
+                match h {
+                    H::Receiver(a) => self.receiver(a, r),
+                    H::DestinyBond => self.destiny_bond_faint(r),
+                    H::Illusion => {}
                 }
             }
             return;
@@ -593,7 +623,7 @@ impl Battle {
         else {
             return;
         };
-        if src.0 == r.0 {
+        if src.0 == r.0 || self.turn_state.future_move_kills.contains(&r) {
             return;
         }
         let ri = self.ident(r);
@@ -627,16 +657,6 @@ impl Battle {
             }
         };
         self.swap_refs(s, flip);
-        // References to the swapped Pokémon follow them (partial trapping's user).
-        for side in self.sides.iter_mut() {
-            for m in side.mons.iter_mut() {
-                if let Some((ts, ti)) = m.vol.partial_trap_source {
-                    if ts == s {
-                        m.vol.partial_trap_source = Some((ts, flip(ti)));
-                    }
-                }
-            }
-        }
         for a in self.queue.iter_mut() {
             match &mut a.kind {
                 ActionKind::Move { side, mon, .. }
@@ -681,6 +701,17 @@ impl Battle {
     }
 
     /// The Pokémon `r` after a swap during its move (Ally Switch).
+    /// Where a Pokémon targeted before an Ally Switch in this move now is:
+    /// the user and its ally traded places. The record stays for
+    /// `relocated_mon`.
+    pub(crate) fn follow_relocation(&self, t: MonRef) -> MonRef {
+        match self.relocated {
+            Some((from, to)) if t == from => to,
+            Some((from, to)) if t == to => from,
+            _ => t,
+        }
+    }
+
     pub(crate) fn relocated_mon(&mut self, r: MonRef) -> MonRef {
         match self.relocated.take() {
             Some((from, to)) if from == r => to,

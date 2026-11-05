@@ -56,6 +56,27 @@ impl Battle {
         let immune = ty
             .iter()
             .any(|&t| self.dex.type_immune_to_effect(t, "trapped"));
+        // Each handler that calls tryTrap() runs runStatusImmunity('trapped'):
+        // unless the type is immune (a Ghost), an Immunity event whose sort
+        // draws when two of its handlers tie.
+        if draw && !immune {
+            let v = &self.mon(r).vol;
+            let calls = usize::from(
+                v.partial_trap > 0 && v.partial_trap_source.is_some_and(|s| self.source_active(s)),
+            ) + usize::from(v.ingrain)
+                + usize::from(v.trapped.is_some())
+                + usize::from(v.no_retreat)
+                + usize::from(v.octolock.is_some_and(|s| self.mon(s).is_active))
+                + usize::from(self.field.fairy_lock > 0)
+                + if self.has_ability(r, AbilityKind::ShadowTag) {
+                    0
+                } else {
+                    tags.len()
+                };
+            for _ in 0..calls {
+                self.event_sort(crate::dex::events::Event::Immunity, r, None, &[]);
+            }
+        }
         let own_tag = self.has_ability(r, AbilityKind::ShadowTag);
         if !tags.is_empty() && !own_tag && !immune {
             self.mon_mut(r).trapped = Trapped::Hidden;
@@ -72,7 +93,8 @@ impl Battle {
         if !immune && traps {
             self.mon_mut(r).trapped = Trapped::Yes;
         }
-        if !immune {
+        // MaybeTrapPokemon runs when the types are unknown, or not immune.
+        if !immune || self.mon(r).vol.type_unknown {
             if draw && tags.len() > 1 {
                 self.speed_sort_by(&mut tags, compare_mod);
             }

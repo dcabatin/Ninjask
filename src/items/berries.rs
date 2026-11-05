@@ -49,6 +49,7 @@ impl Battle {
                 return false;
             }
         }
+        let try_eat = !force;
         let ident = self.ident(r);
         let name = self.item_name(r);
         // `heal` names the source when it is another Pokémon (Teatime's user).
@@ -56,8 +57,11 @@ impl Battle {
             Some(s) => format!("|[of] {}", self.ident(s)),
             None => String::new(),
         };
-        // Ripen's TryEatItem (priority -1, after the berry's own).
-        self.ripen_on_try_eat_item(r);
+        // Ripen's TryEatItem (priority -1, after the berry's own); a forced
+        // eat (Teatime, Stuff Cheeks) skips the event.
+        if try_eat {
+            self.ripen_on_try_eat_item(r);
+        }
         log_line!(self, "|-enditem|{ident}|{name}|[eat]");
         self.run_eat(r, kind, &name, &of);
         // runEvent('EatItem'): Cheek Pouch, Cud Chew.
@@ -256,8 +260,12 @@ impl Battle {
         let (ri, name) = (self.ident(r), self.dex.item(item).name.clone());
         log_line!(self, "|-activate|{ri}|ability: Cud Chew");
         log_line!(self, "|-enditem|{ri}|{name}|[eat]");
-        self.berry_on_eat(r, item);
-        self.run_eat_item(r, item, None, false);
+        // singleEvent('Eat') is suppressed on a holder that ignores items
+        // (Magic Room, Klutz): no effect, and then no EatItem event either.
+        if !self.ignoring_item(r) {
+            self.berry_on_eat(r, item);
+            self.run_eat_item(r, item, None, false);
+        }
         let m = self.mon_mut(r);
         m.ate_berry = true;
         m.ability_state.cud_berry = None;
@@ -287,6 +295,11 @@ impl Battle {
         };
         let (ri, name) = (self.ident(r), self.dex.item(item).name.clone());
         log_line!(self, "|-item|{ri}|{name}|[from] ability: Pickup");
+        // setItem refuses a holder with no HP (at perish 0, not yet
+        // fainted): the message shows, the item is lost.
+        if self.mon(r).hp == 0 || !self.mon(r).is_active {
+            return;
+        }
         self.mon_mut(r).item = Some(item);
         self.item_on_start(r);
     }
@@ -316,13 +329,18 @@ impl Battle {
     pub(crate) fn run_after_use_item(&mut self, r: MonRef) {
         use crate::abilities::{compare_mod, ModHandler};
         let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
-        if self.has_ability(r, AbilityKind::Unburden) {
+        // Collected by the raw ability (a suppressed one still sorts),
+        // checked when run.
+        if self.raw_ability_kind(r) == AbilityKind::Unburden {
             hs.push((None, ModHandler::new(0, self.mon(r).speed, 7)));
         }
-        let mut side: Small<MonRef> = smallvec::smallvec![r];
-        side.extend(self.allies_of(r));
+        // `alliesAndSelf`: the side's slots in order (the order speed ties
+        // are shuffled from), not the user first.
+        let side: Small<MonRef> = (0..self.sides[r.0].n_active)
+            .filter_map(|sl| self.active(r.0, sl))
+            .collect();
         for h in side {
-            if self.has_ability(h, AbilityKind::Symbiosis)
+            if self.raw_ability_kind(h) == AbilityKind::Symbiosis
                 && self.mon(h).hp > 0
                 && !self.mon(h).fainted
             {
@@ -335,7 +353,11 @@ impl Battle {
         for &(h, _) in hs.iter() {
             match h {
                 None => self.after_use_item(r),
-                Some(h) => self.symbiosis(h, r),
+                Some(h) => {
+                    if self.has_ability(h, AbilityKind::Symbiosis) {
+                        self.symbiosis(h, r)
+                    }
+                }
             }
         }
     }

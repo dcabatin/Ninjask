@@ -93,6 +93,13 @@ impl Battle {
     #[inline]
     pub(crate) fn ability_ignored(&self, r: MonRef) -> bool {
         let m = self.mon(r);
+        // Collecting a sort's handlers: Showdown collects a suppressed
+        // ability's handler too (Gastro Acid, Mold Breaker, a transformed
+        // Pokémon's `notransform` ability; a revived Pokémon still in its
+        // slot) and skips it when it runs.
+        if self.turn_state.sorting {
+            return false;
+        }
         if m.revived {
             return true;
         }
@@ -100,7 +107,7 @@ impl Battle {
         // usually absent: test those before reading the ability's flags.
         let breaker = self.ability_breaker.is_some();
         let transformed = m.transformed.is_some();
-        let gastro_acid = m.vol.gastro_acid && !self.turn_state.sorting;
+        let gastro_acid = m.vol.gastro_acid;
         if !(breaker || transformed || gastro_acid) {
             return false;
         }
@@ -306,7 +313,6 @@ impl Battle {
                 b[i] = (cur[i] + b[i]).clamp(-6, 6) - cur[i];
             }
         }
-        self.event_sort(Event::TryBoost, t, source, &[]);
         self.try_boost(t, &mut b, &mut present, source, effect);
 
         let ident = self.ident(t);
@@ -378,8 +384,104 @@ impl Battle {
         success
     }
 
-    /// `TryBoost` handlers: the target's ability, then an ally's Flower Veil.
+    /// Whether the Pokémon's types (an added one included) make it immune to
+    /// powder: Showdown `dex.getImmunity('powder', pokemon)` is false.
+    pub(crate) fn powder_immune_type(&self, t: MonRef) -> bool {
+        let m = self.mon(t);
+        m.types
+            .iter()
+            .chain(std::iter::once(&m.added_type))
+            .any(|&x| x != NO_TYPE && self.dex.type_immune_to_effect(x, "powder"))
+    }
+
+    /// `TryBoost` handlers: the target's own ability's and the Flower Veils
+    /// on its side (`onAllyTryBoost`, its own included), sorted by speed
+    /// (ties drawn), each run in turn: a faster ally's Flower Veil blocks a
+    /// drop before the target's Mirror Armor sends it back. A suppressed
+    /// one still sorts, and does nothing when run.
     fn try_boost(
+        &mut self,
+        t: MonRef,
+        b: &mut Boosts,
+        present: &mut [bool; 7],
+        source: Option<MonRef>,
+        effect: EffectRef,
+    ) {
+        // The handlers as runEvent collects them (event_sort's order: the
+        // target's own, the source's, then each active Pokémon's ally or foe
+        // and onAny ones, ability before item), sorted once; then each runs.
+        #[derive(Clone, Copy)]
+        enum H {
+            Own,
+            FlowerVeil(MonRef),
+            Other,
+        }
+        let event = Event::TryBoost;
+        let mut hs: Small<(H, ModHandler)> = Small::new();
+        let push = |b: &Battle, hs: &mut Small<(H, ModHandler)>, h: MonRef, role: Role, tag: H| {
+            let m = b.mon(h);
+            if let Some(p) = b.dex.ability_handlers[m.ability as usize].priority(event, role) {
+                hs.push((tag, ModHandler::new(p, m.speed, SUB_ORDER_ABILITY)));
+            }
+            if let Some(item) = m.item {
+                if let Some(p) = b.dex.item_handlers[item as usize].priority(event, role) {
+                    hs.push((H::Other, ModHandler::new(p, m.speed, SUB_ORDER_ITEM)));
+                }
+            }
+        };
+        if !self.probe {
+            push(self, &mut hs, t, Role::Own, H::Own);
+            if let Some(src) = source {
+                push(self, &mut hs, src, Role::Source, H::Other);
+            }
+            for side in [t.0, 1 - t.0] {
+                let role = if side == t.0 { Role::Ally } else { Role::Foe };
+                for slot in 0..self.sides[side].n_active {
+                    let Some(h) = self.active(side, slot).filter(|&h| self.mon(h).hp > 0) else {
+                        continue;
+                    };
+                    let tag = if role == Role::Ally
+                        && self.raw_ability_kind(h) == AbilityKind::FlowerVeil
+                    {
+                        H::FlowerVeil(h)
+                    } else {
+                        H::Other
+                    };
+                    push(self, &mut hs, h, role, tag);
+                    push(self, &mut hs, h, Role::Any, H::Other);
+                }
+            }
+            if hs.len() > 1 {
+                self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
+            }
+        } else {
+            hs.push((H::Own, ModHandler::new(0, 0, 0)));
+            let mut side: Small<MonRef> = smallvec::smallvec![t];
+            side.extend(self.allies_of(t));
+            for h in side {
+                if self.raw_ability_kind(h) == AbilityKind::FlowerVeil {
+                    hs.push((H::FlowerVeil(h), ModHandler::new(0, 0, 0)));
+                }
+            }
+        }
+        let mut own_done = false;
+        for &(h, _) in hs.iter() {
+            match h {
+                H::Own if !own_done => {
+                    own_done = true;
+                    self.own_try_boost(t, b, present, source, effect)
+                }
+                H::FlowerVeil(h) => self.flower_veil_try_boost(t, h, b, present, source, effect),
+                _ => {}
+            }
+        }
+        if !own_done {
+            self.own_try_boost(t, b, present, source, effect);
+        }
+    }
+
+    /// The target's own ability's `onTryBoost`.
+    fn own_try_boost(
         &mut self,
         t: MonRef,
         b: &mut Boosts,
@@ -389,7 +491,12 @@ impl Battle {
     ) {
         let ident = self.ident(t);
         let by_other = source != Some(t);
+        // No message for a move's secondary effect; Clear Body, White Smoke,
+        // Full Metal Body and Big Pecks also keep quiet for Octolock's drop
+        // (Flower Veil and the rest don't).
         let quiet = self.effect_has_secondaries(effect);
+        let quiet_octolock =
+            quiet || matches!(effect, EffectRef::Move(m) if self.dex.mv(m).id == "octolock");
         let dex = self.dex.clone();
         let name = dex.ability(self.mon(t).ability).name.as_str();
         match self.ability_kind(t) {
@@ -401,7 +508,7 @@ impl Battle {
                         blocked = true;
                     }
                 }
-                if blocked && !quiet {
+                if blocked && !quiet_octolock {
                     log_line!(
                         self,
                         "|-fail|{ident}|unboost|[from] ability: {name}|[of] {ident}"
@@ -421,7 +528,7 @@ impl Battle {
                 }
             }
             AbilityKind::BigPecks | AbilityKind::KeenEye if by_other => {
-                self.run_try_boost(t, b, present, effect, quiet)
+                self.run_try_boost(t, b, present, effect, quiet_octolock)
             }
             AbilityKind::IntimidateImmune => {
                 let i = Boost::Atk as usize;
@@ -463,31 +570,40 @@ impl Battle {
             }
             _ => {}
         }
-        // Flower Veil on the target or its ally protects Grass types from others.
+    }
+
+    /// Flower Veil's `onAllyTryBoost` (the holder's own side, itself
+    /// included): Grass types are safe from others' drops.
+    fn flower_veil_try_boost(
+        &mut self,
+        t: MonRef,
+        holder: MonRef,
+        b: &mut Boosts,
+        present: &mut [bool; 7],
+        source: Option<MonRef>,
+        effect: EffectRef,
+    ) {
+        if source == Some(t) || !self.has_ability(holder, AbilityKind::FlowerVeil) {
+            return;
+        }
         let grass = self
             .dex
             .type_id("Grass")
             .map(|g| self.has_type_of(t, g))
             .unwrap_or(false);
-        if grass && by_other {
-            let mut holders: Small<MonRef> = smallvec::smallvec![t];
-            holders.extend(self.allies_of(t));
-            if let Some(&holder) = holders
-                .iter()
-                .find(|&&h| self.has_ability(h, AbilityKind::FlowerVeil))
-            {
-                let mut blocked = false;
-                for i in 0..7 {
-                    if present[i] && b[i] < 0 {
-                        present[i] = false;
-                        blocked = true;
-                    }
-                }
-                if blocked && !quiet {
-                    let hi = self.ident(holder);
-                    log_line!(self, "|-block|{ident}|ability: Flower Veil|[of] {hi}");
-                }
+        if !grass {
+            return;
+        }
+        let mut blocked = false;
+        for i in 0..7 {
+            if present[i] && b[i] < 0 {
+                present[i] = false;
+                blocked = true;
             }
+        }
+        if blocked && !self.effect_has_secondaries(effect) {
+            let (ti, hi) = (self.ident(t), self.ident(holder));
+            log_line!(self, "|-block|{ti}|ability: Flower Veil|[of] {hi}");
         }
     }
 
@@ -616,14 +732,52 @@ impl Battle {
         if self.probe {
             return;
         }
+        // findEventHandlers collects a Pokémon's, its allies' and its foes'
+        // handlers only when it or the source is active: a Future Sight user
+        // that has left the field brings no ModifyBoost handlers (Unaware).
+        if event == Event::ModifyBoost {
+            let active = |b: &Battle, x: MonRef| b.mon(x).is_active && !b.mon(x).fainted;
+            if !active(self, target) && !source.is_some_and(|s| active(self, s)) {
+                return;
+            }
+        }
         // Without two handlers there is no sort, so no draw: count, as an
         // upper bound, the effects below with a handler for the event in
         // any role.
-        if extra.len() + self.event_handler_bound(event, target, source) < 2 {
+        let immunity_vols = if event == Event::Immunity {
+            let v = &self.mon(target).vol;
+            usize::from(v.magnet_rise > 0)
+                + usize::from(
+                    v.charging
+                        .is_some_and(|c| matches!(self.dex.mv(c).id.as_str(), "dive" | "dig")),
+                )
+        } else {
+            0
+        };
+        if extra.len() + immunity_vols + self.event_handler_bound(event, target, source) < 2 {
             return;
         }
         let mut hs: ArrayVec<ModHandler, MAX_SORTED_HANDLERS> = ArrayVec::new();
         hs.extend(extra.iter().copied());
+        // Immunity: the target's volatiles with an onImmunity handler (Magnet
+        // Rise, and Dig or Dive while charging), in the order they were added.
+        if event == Event::Immunity {
+            let m = self.mon(target);
+            let v = &m.vol;
+            let mut vols: ArrayVec<u32, 2> = ArrayVec::new();
+            if v.magnet_rise > 0 {
+                vols.push(v.added[crate::state::ResidualVol::MagnetRise as usize]);
+            }
+            if v.charging
+                .is_some_and(|c| matches!(self.dex.mv(c).id.as_str(), "dive" | "dig"))
+            {
+                vols.push(v.added[crate::state::ResidualVol::Charging as usize]);
+            }
+            vols.sort_unstable();
+            for _ in vols {
+                hs.push(ModHandler::new(0, m.speed, 2));
+            }
+        }
         self.push_event_handlers(&mut hs, event, Role::Own, target);
         if let Some(src) = source {
             self.push_event_handlers(&mut hs, event, Role::Source, src);
@@ -948,7 +1102,9 @@ impl Battle {
                 log_line!(self, "|-immune|{ti}|[from] ability: Bulletproof");
                 true
             }
-            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) => {
+            // Only when the target isn't already immune to powder (a Grass
+            // type, Forest's Curse included): `getImmunity('powder', target)`.
+            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) && !self.powder_immune_type(t) => {
                 log_line!(self, "|-immune|{ti}|[from] ability: Overcoat");
                 true
             }
@@ -991,7 +1147,9 @@ impl Battle {
             AbilityKind::Sturdy if mv.ohko.is_some() => true,
             AbilityKind::Soundproof if mv.has(MoveFlag::Sound) => true,
             AbilityKind::Bulletproof if mv.has(MoveFlag::Bullet) => true,
-            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) => true,
+            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) && !self.powder_immune_type(t) => {
+                true
+            }
             AbilityKind::IntimidateImmune
                 if self.ability_id(t) == "oblivious"
                     && matches!(
@@ -1023,7 +1181,9 @@ impl Battle {
 
     /// `ModifySTAB`: Adaptability.
     pub(crate) fn stab_modifier(&self, src: MonRef, move_type: TypeId) -> Option<(u32, u32)> {
-        if !self.has_type_of(src, move_type) {
+        // "The ??? type never gets STAB": Struggle from a user Burn Up left
+        // `???`.
+        if Some(move_type) == self.dex.ids.types.typeless || !self.has_type_of(src, move_type) {
             return None;
         }
         if self.has_ability(src, AbilityKind::Adaptability) {
@@ -1191,11 +1351,22 @@ impl Battle {
 
     /// The turn's start (`endTurn`'s loop): an apparentType that differs
     /// from the real types is brought up to date with a silent `typechange`.
+    /// Showdown checks `pokemon.illusion || pokemon`: a disguised Pokémon
+    /// checks the teammate it appears as (an active ally's stale type is
+    /// caught up under the disguised Pokémon's name, before the ally's own
+    /// turn in the loop), and its own stale type waits until the disguise
+    /// breaks.
     pub(crate) fn sync_apparent_type(&mut self, r: MonRef) {
-        let Some((apparent, real)) = self.mon_mut(r).vol.apparent_types.take() else {
+        let seen = self
+            .mon(r)
+            .illusion
+            .as_ref()
+            .and_then(|n| self.sides[r.0].mons.iter().position(|x| *x.name == **n))
+            .map_or(r, |i| (r.0, i));
+        let Some((apparent, real)) = self.mon_mut(seen).vol.apparent_types.take() else {
             return;
         };
-        if self.mon(r).types != real {
+        if self.mon(seen).types != real {
             return;
         }
         let names = |b: &Battle, t: [TypeId; 2]| {
@@ -1205,7 +1376,7 @@ impl Battle {
                 .collect::<Vec<_>>()
                 .join("/")
         };
-        let now = names(self, self.base_types_of(r));
+        let now = names(self, self.base_types_of(seen));
         if now != names(self, apparent) {
             let ri = self.ident(r);
             log_line!(self, "|-start|{ri}|typechange|{now}|[silent]");

@@ -9,6 +9,7 @@ impl Battle {
     /// Showdown `setSpecies`: the species, its types and stats (HP aside),
     /// and the stored speed becomes the new Speed stat.
     pub(crate) fn set_species(&mut self, r: MonRef, species: SpeciesId) {
+        self.reset_type_knowledge(r);
         let sp = self.dex.species(species).clone();
         let m = self.mon_mut(r);
         let nature = crate::dex::Nature {

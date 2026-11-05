@@ -124,31 +124,69 @@ impl Battle {
         }
     }
 
-    /// An item's `onStart` at switch-in.
+    /// An item's `onStart` at switch-in: `singleEvent('SwitchIn')`, which
+    /// skips an item its holder ignores (Klutz, Magic Room).
+    pub(crate) fn item_on_switch_in(&mut self, r: MonRef) {
+        if !self.ignoring_item(r) {
+            self.item_on_start(r);
+        }
+    }
+
+    /// A switch-in item handler whose item was taken after the handlers
+    /// were collected (its state cleared in place): Air Balloon's onStart
+    /// still announces it; the others do nothing without the item.
+    pub(crate) fn taken_item_on_switch_in(&mut self, r: MonRef, item: ItemId) {
+        if self.dex.item_kind[item as usize] == ItemKind::AirBalloon
+            && !self.ignoring_item(r)
+            && self.field.gravity == 0
+        {
+            let ident = self.ident(r);
+            log_line!(self, "|-item|{ident}|Air Balloon");
+        }
+    }
+
+    /// An item's `onStart` when it is set (`setItem`: Trick, Recycle,
+    /// Symbiosis...). `singleEvent('Start')` runs even on a holder that
+    /// ignores its item (Klutz, Magic Room); the seeds and Air Balloon check
+    /// `ignoringItem` themselves, Metronome, White Herb and the Choice items
+    /// don't.
     pub(crate) fn item_on_start(&mut self, r: MonRef) {
-        match self.item_kind(r) {
+        let ignoring = self.ignoring_item(r);
+        match self.held_item_kind(r) {
             Some(ItemKind::Seed(t)) => {
-                if self.field.terrain == Some(t) {
+                if !ignoring && self.field.terrain == Some(t) {
                     self.use_item(r);
                 }
             }
             // Not announced under Gravity.
-            Some(ItemKind::AirBalloon) if self.field.gravity == 0 => {
+            Some(ItemKind::AirBalloon) if !ignoring && self.field.gravity == 0 => {
                 let ident = self.ident(r);
                 log_line!(self, "|-item|{ident}|Air Balloon");
             }
             Some(ItemKind::Metronome) => self.metronome_on_start(r),
             // White Herb's onStart: used at once on a lowered stat (Trick
             // hands it over before announcing it).
-            Some(ItemKind::WhiteHerb) => self.white_herb_check(r),
+            Some(ItemKind::WhiteHerb) => self.white_herb_start(r),
             // A Choice item's onStart removes an old Choice lock.
             Some(k) if k.is_choice() => self.mon_mut(r).vol.choice_lock = None,
             _ => {}
         }
     }
 
+    /// White Herb's `onStart` from `setItem`, which runs on a holder that
+    /// ignores its item: it uses the herb up (`useItem` doesn't check),
+    /// though its `onUse` (the boosts reset) is skipped.
+    pub(crate) fn white_herb_start(&mut self, r: MonRef) {
+        if self.held_item_kind(r) == Some(ItemKind::WhiteHerb)
+            && self.mon(r).boosts.iter().any(|&b| b < 0)
+        {
+            self.use_item(r);
+        }
+    }
+
     /// White Herb's check (its `onStart`, run from `onAnySwitchIn`,
-    /// `onAnyAfterMove`, `onAnyAfterMega` and `onResidual`).
+    /// `onAnyAfterMove`, `onAnyAfterMega` and `onResidual`, which an
+    /// ignored item skips).
     pub(crate) fn white_herb_check(&mut self, r: MonRef) {
         if self.item_kind(r) == Some(ItemKind::WhiteHerb)
             && self.mon(r).boosts.iter().any(|&b| b < 0)
@@ -166,7 +204,8 @@ impl Battle {
             if self.raw_ability_kind(r) == crate::kinds::AbilityKind::Opportunist {
                 hs.push((r, false, ModHandler::new(0, self.mon(r).speed, 7)));
             }
-            if self.item_kind(r) == Some(ItemKind::WhiteHerb) {
+            // An ignored White Herb still sorts (checked when run).
+            if self.held_item_kind(r) == Some(ItemKind::WhiteHerb) {
                 hs.push((r, true, ModHandler::new(0, self.mon(r).speed, 8)));
             }
         }
@@ -331,10 +370,12 @@ impl Battle {
         if self.mon(src).vol.metronome.is_some() {
             hs.push((H::Metronome, key(speed, 2)));
         }
-        if self.has_ability(src, AbilityKind::Sniper) {
+        if self.raw_ability_kind(src) == AbilityKind::Sniper {
             hs.push((H::Sniper, key(speed, 7)));
         }
-        match self.item_kind(src) {
+        // Items are collected even while ignored (Magic Room, Klutz), and
+        // checked when they run.
+        match self.held_item_kind(src) {
             Some(ItemKind::LifeOrb) => hs.push((H::LifeOrb, key(speed, 8))),
             Some(ItemKind::ExpertBelt) => hs.push((H::ExpertBelt, key(speed, 8))),
             _ => {}
@@ -369,7 +410,7 @@ impl Battle {
         {
             hs.push((H::TargetAbility, key(speed, 7)));
         }
-        if matches!(self.item_kind(tgt), Some(ItemKind::ResistBerry(_))) {
+        if matches!(self.held_item_kind(tgt), Some(ItemKind::ResistBerry(_))) {
             hs.push((H::ResistBerry, key(speed, 8)));
         }
         for s in 0..2 {
@@ -395,9 +436,17 @@ impl Battle {
                         chain = chain.then(n, d);
                     }
                 }
-                H::Sniper if crit => chain = chain.then(3, 2),
-                H::LifeOrb => chain = chain.then(5324, 4096),
-                H::ExpertBelt if type_mod > 0 => chain = chain.then(4915, 4096),
+                H::Sniper if crit && self.has_ability(src, AbilityKind::Sniper) => {
+                    chain = chain.then(3, 2)
+                }
+                H::LifeOrb if self.item_kind(src) == Some(ItemKind::LifeOrb) => {
+                    chain = chain.then(5324, 4096)
+                }
+                H::ExpertBelt
+                    if type_mod > 0 && self.item_kind(src) == Some(ItemKind::ExpertBelt) =>
+                {
+                    chain = chain.then(4915, 4096)
+                }
                 H::FriendGuard(r)
                     if r != tgt
                         && r.0 == tgt.0

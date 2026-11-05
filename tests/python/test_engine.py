@@ -526,3 +526,206 @@ def test_verification_pool_paths(tmp_path, monkeypatch):
     assert verification_teams(tmp_path) == fixture  # name order, without duplicates
     monkeypatch.setenv("NINJASK_POOL", str(tmp_path))
     assert default_pool() == tmp_path
+
+
+def _packed(species, item, ability, moves, nature="Adamant"):
+    return f"{species}||{item}|{ability}|{','.join(moves)}|{nature}||||||50|"
+
+
+def _play_scripted(seeds, salt, t1, t2, script, capsys):
+    """Each seed played against Showdown (`check_reference.play` raises on any
+    difference in logs, state or draws); the logs printed, per seed."""
+    cr = _check_reference()
+    logs = []
+    with RefSim() as sim:
+        for seed in seeds:
+            cr.play(sim, dex(cr.FORMAT), seed_from_int(seed, salt=salt), t1, t2, _ScriptedChoices(script), True)
+            logs.append([line.strip() for line in capsys.readouterr().out.splitlines()])
+    return logs
+
+
+def test_curse_chosen_before_mega_evolving_into_a_ghost_bypasses_good_as_gold(capsys):
+    """Absol chooses Curse while still Dark (the request aims it at itself)
+    and Mega Evolves into Dark/Ghost Absol-Mega-Z the same turn. Showdown's
+    queued move keeps its 'self' target, so Champions' onHit curses a
+    random foe directly: Good as Gold never sees it, and Gholdengo can be
+    the one cursed."""
+    idle = ["CalmMind"]
+    t1 = _team(
+        _packed("Absol", "absolitez", "justified", ["Curse", "CalmMind"]),
+        _packed("Pikachu", "", "static", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    t2 = _team(
+        _packed("Gholdengo", "leftovers", "goodasgold", idle),
+        _packed("Pikachu", "", "static", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    script = ["team 1234", "team 1234", "move 1 mega, move 1", "move 1, move 1"]
+    logs = _play_scripted(range(8), "curse", t1, t2, script, capsys)
+    cursed = [next(line.split("|")[2] for line in log if line.startswith("|-start|") and "|Curse|" in line) for log in logs]
+    assert "p2a: Gholdengo" in cursed, cursed
+    assert not any("Good as Gold" in line for log in logs for line in log)
+
+
+def test_metal_burst_and_comeuppance_leave_a_substitute_half_points():
+    """1.5 times an odd damage reaches a substitute unrounded (Substitute's
+    onTryPrimaryHit takes getDamage as it is), so Showdown leaves it x.5 HP;
+    the projection says so, and the reference check compares it."""
+    idle = ["CalmMind"]
+    t1 = _team(
+        _packed("Aggron", "", "sturdy", ["MetalBurst", "CalmMind"]),
+        _packed("Kingambit", "", "defiant", ["Comeuppance", "CalmMind"]),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    t2 = _team(
+        _packed("Dragonite", "", "innerfocus", ["Substitute", "RockSlide", "CalmMind"], "Modest"),
+        _packed("Gholdengo", "", "goodasgold", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    script = ["team 1234", "team 1234", "move 2, move 2", "move 1, move 1", "move 1, move 1", "move 2, move 1"]
+    d = dex(_check_reference().FORMAT)
+    hps = []
+    for seed in range(12):
+        b = ninjask.Battle(d, t1, t2, seed)
+        for side, choice in zip(["p1", "p2"] * 3, script):
+            b.choose(side, choice)
+        hps.append(json.loads(b.projection())["sides"][1]["pokemon"][0]["volatiles"].get("substitute", {}).get("hp"))
+    assert any(isinstance(hp, float) and hp % 1 == 0.5 for hp in hps), hps
+
+
+def test_metal_burst_into_a_substitute_matches_showdown(capsys):
+    """The half points carry on: Metal Burst and Comeuppance into one
+    substitute, then Drain Punch breaking what is left (its drain is
+    rounded up from the x.5 damage)."""
+    idle = ["CalmMind"]
+    t1 = _team(
+        _packed("Aggron", "", "sturdy", ["MetalBurst", "CalmMind", "DrainPunch"]),
+        _packed("Kingambit", "", "defiant", ["Comeuppance", "CalmMind"]),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    t2 = _team(
+        _packed("Dragonite", "", "innerfocus", ["Substitute", "RockSlide", "CalmMind"], "Modest"),
+        _packed("Gholdengo", "", "goodasgold", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    script = ["team 1234", "team 1234", "move 2, move 2", "move 1, move 1", "move 1, move 1", "move 2, move 1", "move 3 1, move 2", "move 3, move 1"]
+    logs = _play_scripted(range(12), "burst", t1, t2, script, capsys)
+    assert any(any(line.endswith("[from] drain|[of] p2a: Dragonite") for line in log) for log in logs)
+
+
+ITEM_START_CASES = {
+    # setItem's Start runs on a holder that ignores its item: a Klutz Golurk
+    # that takes a Metronome by Trick gets the Metronome volatile...
+    "trick a metronome onto klutz": (
+        _team(
+            _packed("Golurk", "", "klutz", ["Trick", "CalmMind"], "Modest"),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        _team(
+            _packed("Gliscor", "metronome", "hypercutter", ["PoisonJab", "CalmMind"]),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        ["team 1234", "team 1234", "move 1 1, move 1", "move 2, move 1", "move 2, move 1", "move 2, move 1"],
+    ),
+    # ...and one handed a White Herb with a stat lowered uses it up, though
+    # the reset itself (onUse) is skipped.
+    "trick a white herb onto klutz": (
+        _team(
+            _packed("Golurk", "", "klutz", ["CalmMind"], "Modest"),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        _team(
+            _packed("Florges", "whiteherb", "flowerveil", ["Trick", "CalmMind"], "Timid"),
+            _packed("Pikachu", "", "static", ["IcyWind", "CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        ["team 1234", "team 1234", "move 1, move 1", "move 2, move 1", "move 1, move 1", "move 1 1, move 2"],
+    ),
+    # At switch-in the item's handlers go through singleEvent('SwitchIn'),
+    # which skips an ignored item: a Klutz Metronome holder gets no volatile,
+    # and a White Herb under Magic Room stays put when a Pokémon comes in.
+    "klutz metronome switching in; white herb under magic room": (
+        _team(
+            _packed("Snorlax", "whiteherb", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Golurk", "metronome", "klutz", ["CalmMind"], "Modest"),
+            _packed("Florges", "", "flowerveil", ["CalmMind"], "Calm"),
+        ),
+        _team(
+            _packed("Golurk", "", "noguard", ["MagicRoom", "CalmMind"], "Modest"),
+            _packed("Pikachu", "", "static", ["IcyWind", "CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        ["team 1234", "team 1234", "move 1, move 1", "move 1, move 2", "move 1, move 1", "move 2, move 1", "move 1, switch 3", "move 2, move 2"],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(ITEM_START_CASES))
+def test_item_start_on_a_holder_that_ignores_its_item_matches_showdown(case, capsys):
+    t1, t2, script = ITEM_START_CASES[case]
+    _play_scripted(range(4), "items", t1, t2, script, capsys)
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_reflect_type_under_illusion_keeps_the_disguise_types_like_showdown(seed, capsys):
+    """A disguised Zoroark that Reflect Types a foe: Showdown's end-of-turn
+    type catch-up looks at `pokemon.illusion || pokemon`, the teammate it
+    appears as, so nothing is shown while the disguise holds; once a hit
+    breaks it, the Zoroark's real (copied) types are shown at the next one."""
+    t1 = _team(
+        _packed("Vivillon", "", "compoundeyes", ["CalmMind", "StruggleBug"], "Timid"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+    )
+    t2 = _team(
+        _packed("Zoroark-Hisui", "", "illusion", ["ReflectType", "CalmMind"], "Bold"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Wyrdeer", "", "intimidate", ["CalmMind"], "Calm"),
+    )
+    script = ["team 1234", "team 1234", "move 1, move 1", "move 1 1, move 1", "move 2, move 1", "move 2, move 1",
+              "move 1, move 1", "move 2, move 1"]
+    log = _play_scripted([seed], "illusion", t1, t2, script, capsys)[0]
+    assert any("|-start|p2a: Wyrdeer|typechange|[from] move: Reflect Type" in line for line in log)
+    broken = next(i for i, line in enumerate(log) if line.startswith("|-end|p2a: Zoroark|Illusion"))
+    assert not any("typechange|Bug/Flying|[silent]" in line for line in log[:broken])
+    assert any(line == "|-start|p2a: Zoroark|typechange|Bug/Flying|[silent]" for line in log[broken:])
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_regional_forme_keeps_its_species_mega_stone_like_showdown(seed, capsys):
+    """Most Mega Stones' onTakeItem goes by `baseSpecies.baseSpecies`, so a
+    Slowbro-Galar holding Slowbronite keeps it: Trick fails, and Knock Off
+    neither removes it nor gets its 1.5x boost."""
+    t1 = _team(
+        _packed("Golurk", "zoomlens", "noguard", ["Trick", "KnockOff", "CalmMind"], "Adamant"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+    )
+    t2 = _team(
+        _packed("Slowbro-Galar", "slowbronite", "quickdraw", ["CalmMind"], "Bold"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+    )
+    script = ["team 1234", "team 1234", "move 1 1, move 1", "move 1, move 1", "move 2 1, move 1", "move 1, move 1"]
+    logs = _play_scripted([seed], "megastone", t1, t2, script, capsys)
+    assert any("|-fail|p1a: Golurk" in log for log in logs)

@@ -119,7 +119,7 @@ impl Battle {
     pub(crate) fn defog(&mut self, r: MonRef, t: MonRef, mv: &Move) -> bool {
         use crate::state::SideCond;
         let mut success = false;
-        if self.mon(t).vol.substitute == 0 || self.infiltrates(r) {
+        if self.mon(t).vol.substitute_halves == 0 || self.infiltrates(r) {
             let mut b = [0i8; 7];
             b[Boost::Evasion as usize] = -1;
             success = self.boost(
@@ -248,7 +248,8 @@ impl Battle {
 
     /// Heal Bell's `onHit`: the user's whole team (bench too) is cured. A
     /// Soundproof or Good as Gold ally on the field is immune, unless the
-    /// user's move ignores abilities.
+    /// user's move ignores abilities (a fainted one isn't active, so its
+    /// ability is ignored).
     pub(crate) fn heal_bell(&mut self, r: MonRef) -> bool {
         let ri = self.ident(r);
         log_line!(self, "|-activate|{ri}|move: Heal Bell");
@@ -258,6 +259,7 @@ impl Battle {
             if ally != r
                 && !self.suppressing_ability(ally)
                 && self.mon(ally).is_active
+                && !self.mon(ally).fainted
                 && !self.mon(ally).revived
             {
                 let name = match self.ability_kind(ally) {
@@ -351,8 +353,8 @@ impl Battle {
     pub(crate) fn tidy_up(&mut self, r: MonRef, mv: &Move) -> bool {
         let mut success = false;
         for a in self.all_active() {
-            if self.mon(a).vol.substitute > 0 {
-                self.mon_mut(a).vol.substitute = 0;
+            if self.mon(a).vol.substitute_halves > 0 {
+                self.mon_mut(a).vol.substitute_halves = 0;
                 let ai = self.ident(a);
                 log_line!(self, "|-end|{ai}|Substitute");
                 success = true;

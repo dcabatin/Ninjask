@@ -78,7 +78,7 @@ pub(crate) fn projected_volatiles(dex: &Dex, vols: &Value) -> Volatiles {
         roost: vols.get("roost").is_some(),
         perish: vols["perishsong"]["duration"].as_u64().unwrap_or(0) as u8,
         heal_block: vols["healblock"]["duration"].as_u64().unwrap_or(0) as u8,
-        substitute: vols["substitute"]["hp"].as_u64().unwrap_or(0) as u16,
+        substitute_halves: (vols["substitute"]["hp"].as_f64().unwrap_or(0.0) * 2.0).round() as u16,
         added: Default::default(),
         ..Default::default()
     };
@@ -205,6 +205,7 @@ fn import_mon(dex: &Dex, v: &Value, position: usize, stamp: &mut u32) -> Result<
         }
     }
     let mut vol = projected_volatiles(dex, vols);
+    vol.type_unknown = v["knownType"].as_bool() == Some(false);
     // The order the volatiles with handlers were added in.
     let charging_id = vol
         .charging
