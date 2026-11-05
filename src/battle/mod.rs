@@ -600,11 +600,19 @@ impl Battle {
         // findEventHandlers collects nothing for a target that isn't active,
         // and Showdown's faintMessages makes a fainted Pokémon inactive (its
         // queued move still gets a speed when the queue is re-sorted).
-        let m = self.mon(r);
-        if m.is_active && !m.fainted {
+        if self.collects_handlers(r) {
             self.sort_unaware_handlers();
         }
         self.action_speed(r)
+    }
+
+    /// Whether an event on `r` (with no active source) collects handlers:
+    /// not for a Pokémon that isn't active, fainted or revived in its slot
+    /// and not yet sent back in (Revival Blessing).
+    #[inline]
+    pub(crate) fn collects_handlers(&self, r: MonRef) -> bool {
+        let m = self.mon(r);
+        m.is_active && !m.fainted && !m.revived
     }
 
     /// The stored speeds of the active holders of an `onAnyModifyBoost`
@@ -681,7 +689,7 @@ impl Battle {
     fn update_speed(&mut self) {
         let sorts = self.unaware_handler_speeds().len() > 1;
         for r in self.all_active() {
-            if sorts {
+            if sorts && self.collects_handlers(r) {
                 self.sort_unaware_handlers();
             }
             let sp = self.action_speed(r);

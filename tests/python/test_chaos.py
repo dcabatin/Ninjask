@@ -55,6 +55,8 @@ GAMES = [
     (19, 3654),  # type immunity for a locked Thrash aimed at its own user
     (22, 2330),  # a revived Pokémon in its slot joins the residual sort
     (25, 1385),  # Leftovers given away by Symbiosis still heals that turn
+    (28, 1663),  # a revived Pokémon's speed collects no handlers until sent in
+    (28, 2496),  # a substitute's damage sees the last activeTarget's Unaware
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -80,6 +82,7 @@ MIXED = [
     (24, 2128, "wide"),  # a status move's AfterMoveSecondary sort: two Pickpockets
     (24, 2476, "wide"),  # Skill Link lost mid-move: still no per-hit accuracy
     (24, 3874, "wide"),  # Heal Bell and a fainted Good as Gold ally
+    (26, 3998, "mixed"),  # Bind ends when its user is revived but not sent in
 ]
 
 

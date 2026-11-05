@@ -15,6 +15,13 @@ pub struct ActiveMove {
     pub cur_move: Option<MoveId>,
     /// Showdown `activePokemon`, set and cleared with `cur_move` (Mega Sol).
     pub cur_user: Option<MonRef>,
+    /// Showdown `battle.activeTarget`: set for each target by the accuracy
+    /// step and by `getSpreadDamage`, so a substitute's damage (computed in
+    /// `tryPrimaryHitEvent`, before `getSpreadDamage`) sees the last one.
+    pub active_target: Option<MonRef>,
+    /// While a substitute's damage is computed: the `activeTarget` whose
+    /// Unaware decides which stages are ignored.
+    pub unaware_target: Option<MonRef>,
     /// The move last used and its type after ModifyType (Showdown's
     /// `activeMove`), for the user's `AfterMove` handlers.
     pub used_type: Option<(MoveId, TypeId)>,

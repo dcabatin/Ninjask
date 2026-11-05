@@ -201,6 +201,11 @@ the new `_core.abi3.so`.
     (Pickpocket, Red Card, Eject Button, freeze), not only Berserk's; Heal
     Bell ignores a fainted ally's Good as Gold; Leftovers taken during the
     residuals (Symbiosis) still heals its old holder that turn.
+  - A Pokémon revived in its slot and not yet sent back in counts as
+    inactive: its speed collects no handlers (no Unaware sort), and a
+    partial trap it set ends. A substitute's damage takes Unaware from
+    Showdown's `activeTarget`, the last target of the accuracy step, so on
+    a spread move another target's Unaware can ignore the user's stages.
 
 ### Changed
 

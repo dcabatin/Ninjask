@@ -551,6 +551,22 @@ impl Battle {
         if src == tgt {
             return (atk, def);
         }
+        // A substitute's damage: Unaware's handler compares with
+        // `activeTarget`, which may be another target of the move.
+        if let Some(at) = self.active_move.unaware_target {
+            return (
+                if at != src && self.unaware_on_any_modify_boost(at) {
+                    0
+                } else {
+                    atk
+                },
+                if tgt == at && self.unaware_on_any_modify_boost(src) {
+                    0
+                } else {
+                    def
+                },
+            );
+        }
         (
             if self.unaware_on_any_modify_boost(tgt) {
                 0

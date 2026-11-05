@@ -1140,7 +1140,9 @@ impl Battle {
             None => true,
             Some(s) => {
                 let sm = self.mon(s);
-                !sm.is_active || sm.fainted || sm.hp == 0 || sm.active_turns == 0
+                // A user revived in its slot (Revival Blessing) isn't active
+                // until it is sent back in.
+                !sm.is_active || sm.revived || sm.fainted || sm.hp == 0 || sm.active_turns == 0
             }
         };
         if gone {

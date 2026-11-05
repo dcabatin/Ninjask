@@ -1320,6 +1320,7 @@ impl Battle {
         // 4. Accuracy.
         let mut next = ActiveList::new();
         for &t in &live {
+            self.active_move.active_target = Some(t);
             // A one-hit KO can't hit a higher level or (Sheer Cold) an Ice type.
             if let Some(immune_type) = mv.ohko {
                 let (lu, lt) = (self.mon(r).level, self.mon(t).level);

@@ -397,7 +397,7 @@ impl Battle {
             }
             return self.action_speed(r);
         }
-        if !(resolution.speeds_current() && m.is_active && !m.fainted) {
+        if !(resolution.speeds_current() && self.collects_handlers(r)) {
             return self.action_speed_draw(r);
         }
         let stored = m.speed;

@@ -568,7 +568,10 @@ impl Battle {
                 .collect();
             let damages: PerActive<u32> = live
                 .iter()
-                .map(|&t| self.move_damage(r, t, mv, kind, move_type, type_changed, spread))
+                .map(|&t| {
+                    self.active_move.active_target = Some(t);
+                    self.move_damage(r, t, mv, kind, move_type, type_changed, spread)
+                })
                 .collect();
             let mut damaged = ActiveList::new();
             let mut dealt_now: PerActive<(MonRef, u32)> = PerActive::new();
@@ -842,7 +845,12 @@ impl Battle {
         type_changed: bool,
         spread: bool,
     ) {
+        // Unaware goes by `activeTarget`, still the last target the accuracy
+        // step (or the previous hit's damage) set: on a spread move, another
+        // target's Unaware can ignore the user's stages here.
+        self.active_move.unaware_target = Some(self.active_move.active_target.unwrap_or(t));
         let dmg = self.move_damage(r, t, mv, kind, move_type, type_changed, spread);
+        self.active_move.unaware_target = None;
         // In half points: Metal Burst's and Comeuppance's 1.5 times reaches
         // the substitute unrounded.
         let dmg = match kind {
