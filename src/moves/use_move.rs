@@ -1386,7 +1386,12 @@ impl Battle {
                 self.faint_messages_check(user_down);
                 self.run_update();
                 // afterMoveSecondaryEvent on the targets a substitute didn't take.
-                let after = self.after_move_secondary_targets(&hit_list);
+                // Targets are Pokémon: after Ally Switch they follow theirs.
+                let after: Small<MonRef> = self
+                    .after_move_secondary_targets(&hit_list)
+                    .into_iter()
+                    .map(|t| self.follow_relocation(t))
+                    .collect();
                 if self.ally_puff_on_try_hit(r, &live, kind) {
                     // A damaging move to Showdown (Pollen Puff healing an
                     // ally): Red Card, Eject Button and the rest react.

@@ -143,6 +143,8 @@ the new `_core.abi3.so`.
     Breaker, and a transformed Pokémon's `notransform` ability (a Ditto
     copying Morpeko's Hunger Switch), for Damp, No Guard, Pickpocket,
     Berserk, Unburden, Symbiosis, Sniper and the residual handlers.
+  - Ally Switch's own AfterMoveSecondary event goes to the Pokémon that
+    used it, in its new slot (it ran an ally's Berserk).
 
 ### Changed
 

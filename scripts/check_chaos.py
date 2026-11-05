@@ -166,7 +166,8 @@ def wide_team(rng: random.Random, d, spec, parts, size: int, mix: str) -> str | 
             # No Pokémon that can Mega Evolve can transform first.
             if ability == "imposter":
                 ability = rng.choice([a for a in parts["all_abilities"] if a != "imposter"])
-            ms = [m if m != "transform" else "protect" for m in ms]
+            if "transform" in ms:
+                ms[ms.index("transform")] = rng.choice([m for m in parts["attacks"] if m not in ms])
         else:
             item = rng.choice((parts["items"] if chaos else parts["all_items"]) + [""])
         nature = rng.choice(NATURES)

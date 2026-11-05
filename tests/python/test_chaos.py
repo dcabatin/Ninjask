@@ -48,6 +48,10 @@ GAMES = [
     (3, 986),  # Healing Wish fails after Libero
     (4, 1935),  # Cud Chew under Magic Room
 ]
+# (seed, game, mix) from the wider pools.
+MIXED = [
+    (6, 196, "mixed"),  # Ally Switch: AfterMoveSecondary follows the user
+]
 
 
 @pytest.fixture(scope="module")
@@ -62,6 +66,18 @@ def chaos():
 
 @pytest.mark.parametrize(("seed", "game"), GAMES)
 def test_chaos_game_matches_showdown(chaos, seed: int, game: int) -> None:
+    chaos._worker["mix"] = "chaos"
     _, inputs, kind, detail = chaos.run_game((game, seed))
+    assert kind is None, detail
+    assert inputs > 0
+
+
+@pytest.mark.parametrize(("seed", "game", "mix"), MIXED)
+def test_wider_chaos_game_matches_showdown(chaos, seed: int, game: int, mix: str) -> None:
+    chaos._worker["mix"] = mix
+    try:
+        _, inputs, kind, detail = chaos.run_game((game, seed))
+    finally:
+        chaos._worker["mix"] = "chaos"
     assert kind is None, detail
     assert inputs > 0

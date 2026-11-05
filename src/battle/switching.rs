@@ -709,6 +709,17 @@ impl Battle {
     }
 
     /// The Pokémon `r` after a swap during its move (Ally Switch).
+    /// Where a Pokémon targeted before an Ally Switch in this move now is:
+    /// the user and its ally traded places. The record stays for
+    /// `relocated_mon`.
+    pub(crate) fn follow_relocation(&self, t: MonRef) -> MonRef {
+        match self.relocated {
+            Some((from, to)) if t == from => to,
+            Some((from, to)) if t == to => from,
+            _ => t,
+        }
+    }
+
     pub(crate) fn relocated_mon(&mut self, r: MonRef) -> MonRef {
         match self.relocated.take() {
             Some((from, to)) if from == r => to,
