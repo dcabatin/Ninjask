@@ -312,7 +312,6 @@ impl Battle {
                 b[i] = (cur[i] + b[i]).clamp(-6, 6) - cur[i];
             }
         }
-        self.event_sort(Event::TryBoost, t, source, &[]);
         self.try_boost(t, &mut b, &mut present, source, effect);
 
         let ident = self.ident(t);
@@ -407,36 +406,76 @@ impl Battle {
         source: Option<MonRef>,
         effect: EffectRef,
     ) {
-        use crate::abilities::{compare_mod, ModHandler};
-        let own = matches!(
-            self.raw_ability_kind(t),
-            AbilityKind::ClearBody
-                | AbilityKind::HyperCutter
-                | AbilityKind::BigPecks
-                | AbilityKind::KeenEye
-                | AbilityKind::IntimidateImmune
-                | AbilityKind::MirrorArmor
-                | AbilityKind::GuardDog
-        );
-        let mut side: Small<MonRef> = smallvec::smallvec![t];
-        side.extend(self.allies_of(t));
-        let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
-        if own {
-            hs.push((None, ModHandler::new(0, self.mon(t).speed, 7)));
+        // The handlers as runEvent collects them (event_sort's order: the
+        // target's own, the source's, then each active Pokémon's ally or foe
+        // and onAny ones, ability before item), sorted once; then each runs.
+        #[derive(Clone, Copy)]
+        enum H {
+            Own,
+            FlowerVeil(MonRef),
+            Other,
         }
-        for h in side {
-            if self.mon(h).hp > 0 && self.raw_ability_kind(h) == AbilityKind::FlowerVeil {
-                hs.push((Some(h), ModHandler::new(0, self.mon(h).speed, 7)));
+        let event = Event::TryBoost;
+        let mut hs: Small<(H, ModHandler)> = Small::new();
+        let push = |b: &Battle, hs: &mut Small<(H, ModHandler)>, h: MonRef, role: Role, tag: H| {
+            let m = b.mon(h);
+            if let Some(p) = b.dex.ability_handlers[m.ability as usize].priority(event, role) {
+                hs.push((tag, ModHandler::new(p, m.speed, SUB_ORDER_ABILITY)));
+            }
+            if let Some(item) = m.item {
+                if let Some(p) = b.dex.item_handlers[item as usize].priority(event, role) {
+                    hs.push((H::Other, ModHandler::new(p, m.speed, SUB_ORDER_ITEM)));
+                }
+            }
+        };
+        if !self.probe {
+            push(self, &mut hs, t, Role::Own, H::Own);
+            if let Some(src) = source {
+                push(self, &mut hs, src, Role::Source, H::Other);
+            }
+            for side in [t.0, 1 - t.0] {
+                let role = if side == t.0 { Role::Ally } else { Role::Foe };
+                for slot in 0..self.sides[side].n_active {
+                    let Some(h) = self.active(side, slot).filter(|&h| self.mon(h).hp > 0) else {
+                        continue;
+                    };
+                    let tag = if role == Role::Ally
+                        && self.raw_ability_kind(h) == AbilityKind::FlowerVeil
+                    {
+                        H::FlowerVeil(h)
+                    } else {
+                        H::Other
+                    };
+                    push(self, &mut hs, h, role, tag);
+                    push(self, &mut hs, h, Role::Any, H::Other);
+                }
+            }
+            if hs.len() > 1 {
+                self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
+            }
+        } else {
+            hs.push((H::Own, ModHandler::new(0, 0, 0)));
+            let mut side: Small<MonRef> = smallvec::smallvec![t];
+            side.extend(self.allies_of(t));
+            for h in side {
+                if self.raw_ability_kind(h) == AbilityKind::FlowerVeil {
+                    hs.push((H::FlowerVeil(h), ModHandler::new(0, 0, 0)));
+                }
             }
         }
-        if hs.len() > 1 {
-            self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
-        }
+        let mut own_done = false;
         for &(h, _) in hs.iter() {
             match h {
-                None => self.own_try_boost(t, b, present, source, effect),
-                Some(h) => self.flower_veil_try_boost(t, h, b, present, source, effect),
+                H::Own if !own_done => {
+                    own_done = true;
+                    self.own_try_boost(t, b, present, source, effect)
+                }
+                H::FlowerVeil(h) => self.flower_veil_try_boost(t, h, b, present, source, effect),
+                _ => {}
             }
+        }
+        if !own_done {
+            self.own_try_boost(t, b, present, source, effect);
         }
     }
 
