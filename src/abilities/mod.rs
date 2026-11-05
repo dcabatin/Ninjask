@@ -384,6 +384,16 @@ impl Battle {
         success
     }
 
+    /// Whether the Pokémon's types (an added one included) make it immune to
+    /// powder: Showdown `dex.getImmunity('powder', pokemon)` is false.
+    pub(crate) fn powder_immune_type(&self, t: MonRef) -> bool {
+        let m = self.mon(t);
+        m.types
+            .iter()
+            .chain(std::iter::once(&m.added_type))
+            .any(|&x| x != NO_TYPE && self.dex.type_immune_to_effect(x, "powder"))
+    }
+
     /// `TryBoost` handlers: the target's own ability's and the Flower Veils
     /// on its side (`onAllyTryBoost`, its own included), sorted by speed
     /// (ties drawn), each run in turn: a faster ally's Flower Veil blocks a
@@ -1023,7 +1033,9 @@ impl Battle {
                 log_line!(self, "|-immune|{ti}|[from] ability: Bulletproof");
                 true
             }
-            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) => {
+            // Only when the target isn't already immune to powder (a Grass
+            // type, Forest's Curse included): `getImmunity('powder', target)`.
+            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) && !self.powder_immune_type(t) => {
                 log_line!(self, "|-immune|{ti}|[from] ability: Overcoat");
                 true
             }
@@ -1066,7 +1078,9 @@ impl Battle {
             AbilityKind::Sturdy if mv.ohko.is_some() => true,
             AbilityKind::Soundproof if mv.has(MoveFlag::Sound) => true,
             AbilityKind::Bulletproof if mv.has(MoveFlag::Bullet) => true,
-            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) => true,
+            AbilityKind::Overcoat if mv.has(MoveFlag::Powder) && !self.powder_immune_type(t) => {
+                true
+            }
             AbilityKind::IntimidateImmune
                 if self.ability_id(t) == "oblivious"
                     && matches!(

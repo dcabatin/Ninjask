@@ -360,7 +360,9 @@ impl Battle {
         if self.raw_ability_kind(src) == AbilityKind::Sniper {
             hs.push((H::Sniper, key(speed, 7)));
         }
-        match self.item_kind(src) {
+        // Items are collected even while ignored (Magic Room, Klutz), and
+        // checked when they run.
+        match self.held_item_kind(src) {
             Some(ItemKind::LifeOrb) => hs.push((H::LifeOrb, key(speed, 8))),
             Some(ItemKind::ExpertBelt) => hs.push((H::ExpertBelt, key(speed, 8))),
             _ => {}
@@ -395,7 +397,7 @@ impl Battle {
         {
             hs.push((H::TargetAbility, key(speed, 7)));
         }
-        if matches!(self.item_kind(tgt), Some(ItemKind::ResistBerry(_))) {
+        if matches!(self.held_item_kind(tgt), Some(ItemKind::ResistBerry(_))) {
             hs.push((H::ResistBerry, key(speed, 8)));
         }
         for s in 0..2 {
@@ -424,8 +426,14 @@ impl Battle {
                 H::Sniper if crit && self.has_ability(src, AbilityKind::Sniper) => {
                     chain = chain.then(3, 2)
                 }
-                H::LifeOrb => chain = chain.then(5324, 4096),
-                H::ExpertBelt if type_mod > 0 => chain = chain.then(4915, 4096),
+                H::LifeOrb if self.item_kind(src) == Some(ItemKind::LifeOrb) => {
+                    chain = chain.then(5324, 4096)
+                }
+                H::ExpertBelt
+                    if type_mod > 0 && self.item_kind(src) == Some(ItemKind::ExpertBelt) =>
+                {
+                    chain = chain.then(4915, 4096)
+                }
                 H::FriendGuard(r)
                     if r != tgt
                         && r.0 == tgt.0
