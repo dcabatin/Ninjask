@@ -171,6 +171,10 @@ the new `_core.abi3.so`.
     Rock's; the ModifySecondaries sort (Shield Dust, Parental Bond) and
     each tryTrap's Immunity sort are drawn, with Magnet Rise, Dig and Dive
     among the Immunity handlers.
+  - A regional forme keeps its species' Mega Stone (Slowbro-Galar and
+    Slowbronite): most stones' onTakeItem goes by the base species' own
+    base species. Found by parity on the 418-team coverage pool of
+    just_a_simulator.
 
 ### Changed
 

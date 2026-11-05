@@ -707,3 +707,25 @@ def test_reflect_type_under_illusion_keeps_the_disguise_types_like_showdown(seed
     broken = next(i for i, line in enumerate(log) if line.startswith("|-end|p2a: Zoroark|Illusion"))
     assert not any("typechange|Bug/Flying|[silent]" in line for line in log[:broken])
     assert any(line == "|-start|p2a: Zoroark|typechange|Bug/Flying|[silent]" for line in log[broken:])
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_regional_forme_keeps_its_species_mega_stone_like_showdown(seed, capsys):
+    """Most Mega Stones' onTakeItem goes by `baseSpecies.baseSpecies`, so a
+    Slowbro-Galar holding Slowbronite keeps it: Trick fails, and Knock Off
+    neither removes it nor gets its 1.5x boost."""
+    t1 = _team(
+        _packed("Golurk", "zoomlens", "noguard", ["Trick", "KnockOff", "CalmMind"], "Adamant"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+    )
+    t2 = _team(
+        _packed("Slowbro-Galar", "slowbronite", "quickdraw", ["CalmMind"], "Bold"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+    )
+    script = ["team 1234", "team 1234", "move 1 1, move 1", "move 1, move 1", "move 2 1, move 1", "move 1, move 1"]
+    logs = _play_scripted([seed], "megastone", t1, t2, script, capsys)
+    assert any("|-fail|p1a: Golurk" in log for log in logs)

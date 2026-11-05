@@ -275,18 +275,31 @@ impl Battle {
             .unwrap_or(false)
     }
 
-    /// Mega Stones' onTakeItem: a stone that maps from or to the Pokémon's
-    /// base species (the Mega after Mega Evolution) can neither leave it nor
-    /// be given to it, even when the base species is a forme (Floettite:
-    /// Floette-Eternal).
+    /// Mega Stones' onTakeItem: a stone can neither leave nor be given to a
+    /// Pokémon it Mega Evolves. Most stones go by the base species' own base
+    /// species (`megaStone[baseSpecies.baseSpecies]`), so a regional forme
+    /// counts: Slowbro-Galar keeps Slowbronite. Floettite, Magearnite,
+    /// Meowsticite and Tatsugirinite go by the forme's name, from or to
+    /// (Floette-Eternal, or the Mega after Mega Evolution).
     pub(crate) fn item_receivable(&self, r: MonRef, item: ItemId) -> bool {
-        let name = &self.dex.species(self.mon(r).base_species).name;
-        !self
-            .dex
-            .item(item)
-            .mega_stone
-            .iter()
-            .any(|(from, to)| from == name || to == name)
+        let it = self.dex.item(item);
+        if it.mega_stone.is_empty() {
+            return true;
+        }
+        let species = self.dex.species(self.mon(r).base_species);
+        if matches!(
+            it.id.as_str(),
+            "floettite" | "magearnite" | "meowsticite" | "tatsugirinite"
+        ) {
+            let name = &species.name;
+            !it.mega_stone
+                .iter()
+                .any(|(from, to)| from == name || to == name)
+        } else {
+            !it.mega_stone
+                .iter()
+                .any(|(from, _)| *from == species.base_species)
+        }
     }
 
     /// Knock Off's `onAfterHit`: the target loses its item.
