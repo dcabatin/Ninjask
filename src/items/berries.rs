@@ -256,8 +256,12 @@ impl Battle {
         let (ri, name) = (self.ident(r), self.dex.item(item).name.clone());
         log_line!(self, "|-activate|{ri}|ability: Cud Chew");
         log_line!(self, "|-enditem|{ri}|{name}|[eat]");
-        self.berry_on_eat(r, item);
-        self.run_eat_item(r, item, None, false);
+        // singleEvent('Eat') is suppressed on a holder that ignores items
+        // (Magic Room, Klutz): no effect, and then no EatItem event either.
+        if !self.ignoring_item(r) {
+            self.berry_on_eat(r, item);
+            self.run_eat_item(r, item, None, false);
+        }
         let m = self.mon_mut(r);
         m.ate_berry = true;
         m.ability_state.cud_berry = None;

@@ -46,6 +46,7 @@ GAMES = [
     (3, 913),  # Illusion's onFaint and Receiver
     (3, 971),  # Baton Pass clears the newcomer's move results
     (3, 986),  # Healing Wish fails after Libero
+    (4, 1935),  # Cud Chew under Magic Room
 ]
 
 

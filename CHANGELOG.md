@@ -130,6 +130,8 @@ the new `_core.abi3.so`.
     results too (`copyVolatileFrom`'s `clearVolatile`).
   - A fainting Illusion holder's onFaint joins the Faint event's sort (it
     ties with an ally's Receiver at equal speed).
+  - Cud Chew re-eating a berry under Magic Room (or Klutz) has no effect,
+    as Showdown's suppressed `Eat` event leaves it.
 
 ### Changed
 
