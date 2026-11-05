@@ -917,11 +917,6 @@ impl Battle {
                 }
                 None
             }
-            // onTryHit on its user: fails without a Pokémon to switch in.
-            MoveKind::HealingWish if !self.can_switch_side(r.0) => {
-                self.fail_move(r);
-                Some(Some(false))
-            }
             // onTry: Stockpile stops at 3 layers; Spit Up and Swallow need one.
             MoveKind::Stockpile if self.mon(r).vol.stockpile >= 3 => {
                 self.fail_move(r);

@@ -322,6 +322,10 @@ impl Battle {
             m.times_attacked = 0;
             m.attacked_by.clear();
             m.hurt_this_turn = None;
+            m.last_move = None;
+            m.move_this_turn_result = None;
+            m.move_last_turn_result = None;
+            m.moved_this_turn = false;
         }
         let who = (s, slot);
         self.gastro_acid_on_copy(who);
@@ -549,26 +553,39 @@ impl Battle {
         // The ability's End follows, and End isn't suppressed: Gastro Acid
         // (cleared with the volatiles anyway) mustn't hide the ability from it.
         self.mon_mut(r).vol.gastro_acid = false;
-        // Receiver's onAllyFaint joins Destiny Bond's onFaint in the sort.
+        // Receiver's onAllyFaint joins Destiny Bond's onFaint in the sort,
+        // and so does the fainting Pokémon's own Illusion (its onFaint only
+        // drops the disguise, which fainting does here anyway).
         let receivers: Small<MonRef> = self
             .allies_of(r)
             .into_iter()
             .filter(|&a| self.has_ability(a, AbilityKind::Receiver))
             .collect();
-        if !receivers.is_empty() {
+        let illusion = self.raw_ability_kind(r) == AbilityKind::Illusion;
+        if !receivers.is_empty() || (illusion && self.mon(r).vol.destiny_bond) {
             use crate::abilities::{compare_mod, ModHandler};
-            let mut hs: Small<(ModHandler, Option<MonRef>)> = receivers
+            #[derive(Clone, Copy)]
+            enum H {
+                Receiver(MonRef),
+                DestinyBond,
+                Illusion,
+            }
+            let mut hs: Small<(ModHandler, H)> = receivers
                 .iter()
-                .map(|&a| (ModHandler::new(0, self.mon(a).speed, 7), Some(a)))
+                .map(|&a| (ModHandler::new(0, self.mon(a).speed, 7), H::Receiver(a)))
                 .collect();
             if self.mon(r).vol.destiny_bond {
-                hs.push((ModHandler::new(0, self.mon(r).speed, 2), None));
+                hs.push((ModHandler::new(0, self.mon(r).speed, 2), H::DestinyBond));
+            }
+            if illusion {
+                hs.push((ModHandler::new(0, self.mon(r).speed, 7), H::Illusion));
             }
             self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.0, &b.0));
-            for &(_, holder) in hs.iter() {
-                match holder {
-                    Some(h) => self.receiver(h, r),
-                    None => self.destiny_bond_faint(r),
+            for &(_, h) in hs.iter() {
+                match h {
+                    H::Receiver(a) => self.receiver(a, r),
+                    H::DestinyBond => self.destiny_bond_faint(r),
+                    H::Illusion => {}
                 }
             }
             return;

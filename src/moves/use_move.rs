@@ -1001,8 +1001,13 @@ impl Battle {
             return Some(false);
         }
         self.run_prepare_hit(r, mv, move_type, bounced);
-        // Revival Blessing's onTryHit (after PrepareHit, so Protean and
-        // Libero change the type first): a fainted teammate to revive.
+        // Healing Wish's onTryHit (after PrepareHit, so Protean and Libero
+        // change the type first): a Pokémon to switch in.
+        if kind == MoveKind::HealingWish && !self.can_switch_side(r.0) {
+            self.fail_move(r);
+            return Some(false);
+        }
+        // Revival Blessing's onTryHit (likewise): a fainted teammate to revive.
         if kind == MoveKind::RevivalBlessing && !self.sides[r.0].mons.iter().any(|m| m.fainted) {
             log_line!(self, "|-fail|{ident}");
             self.attr_move_line(line, "[still]");

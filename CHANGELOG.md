@@ -124,6 +124,12 @@ the new `_core.abi3.so`.
     Sight's user) sorts no Unaware handlers.
   - Air Lock's and Cloud Nine's onEnd runs under Gastro Acid too (End
     isn't suppressed).
+  - Healing Wish with nobody to switch in fails after Protean and Libero
+    act (onTryHit), like Revival Blessing.
+  - Baton Pass and Shed Tail clear the newcomer's last move and move
+    results too (`copyVolatileFrom`'s `clearVolatile`).
+  - A fainting Illusion holder's onFaint joins the Faint event's sort (it
+    ties with an ally's Receiver at equal speed).
 
 ### Changed
 
