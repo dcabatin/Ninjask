@@ -32,11 +32,17 @@ import sys
 import traceback
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import check_reference as cr  # noqa: E402
+import importlib.util
 
-import ninjask  # noqa: E402
-from ninjask.refsim import RefSim, seed_from_int  # noqa: E402
+import ninjask
+from ninjask.refsim import RefSim, seed_from_int
+
+# check_reference.py, beside this script: its play loop and divergence report.
+_spec = importlib.util.spec_from_file_location("check_reference", Path(__file__).resolve().parent / "check_reference.py")
+assert _spec and _spec.loader
+cr = importlib.util.module_from_spec(_spec)
+sys.modules["check_reference"] = cr  # worker processes unpickle Divergence by module name
+_spec.loader.exec_module(cr)
 
 FORMAT = cr.FORMAT
 
