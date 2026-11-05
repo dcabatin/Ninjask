@@ -51,6 +51,7 @@ GAMES = [
 # (seed, game, mix) from the wider pools.
 MIXED = [
     (6, 196, "mixed"),  # Ally Switch: AfterMoveSecondary follows the user
+    (7, 3783, "wide"),  # Magic Bounce from a holder mid-Dive
 ]
 
 

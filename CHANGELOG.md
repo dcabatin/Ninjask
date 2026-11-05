@@ -145,6 +145,8 @@ the new `_core.abi3.so`.
     Berserk, Unburden, Symbiosis, Sniper and the residual handlers.
   - Ally Switch's own AfterMoveSecondary event goes to the Pokémon that
     used it, in its new slot (it ran an ally's Berserk).
+  - Magic Bounce bounces a side move (Spikes) even while its holder is
+    mid-Dive: `onAllyTryHitSide` checks the move's first target.
 
 ### Changed
 

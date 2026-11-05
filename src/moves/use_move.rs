@@ -1078,12 +1078,17 @@ impl Battle {
                     self.speed_sort_by(&mut holders, |a, b| compare_mod(&a.1, &b.1));
                 }
                 // The first holder whose ability works (not suppressed by Mold
-                // Breaker) and that isn't semi-invulnerable bounces it.
+                // Breaker) bounces it, unless the event's target is
+                // semi-invulnerable: `onAllyTryHitSide`'s `target` is the
+                // move's first target (the side's first active Pokémon), not
+                // the holder, so a holder mid-Dive still bounces it.
+                let first = (0..self.sides[side].n_active).find_map(|sl| self.active(side, sl));
+                let hidden = first.is_some_and(|f| self.semi_invulnerable(f));
                 let bouncer = holders.iter().find(|(h, _)| {
-                    !self.ability_suppressed(*h)
+                    !hidden
+                        && !self.ability_suppressed(*h)
                         && !self.ignoring_ability(*h)
                         && !self.mon(*h).revived
-                        && !self.semi_invulnerable(*h)
                 });
                 if let Some(&(h, _)) = bouncer {
                     self.bounce_move(r, h, move_id);
