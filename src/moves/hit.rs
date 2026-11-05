@@ -149,6 +149,9 @@ impl Battle {
     /// Add or restart the `stall` volatile (Protect's consecutive-use counter).
     pub(crate) fn add_stall(&mut self, r: MonRef) {
         if self.mon(r).vol.stall_counter == 0 {
+            // addVolatile of a new volatile: TryAddVolatile sorts first (two
+            // tied Sweet Veils draw); a present one only restarts.
+            self.try_add_volatile_sort(r);
             self.stamp_volatile(r, ResidualVol::Stall);
         }
         let m = self.mon_mut(r);

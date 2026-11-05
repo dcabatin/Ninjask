@@ -89,7 +89,9 @@ impl Battle {
                     }
                 }
                 MoveKind::Protect(p) => {
-                    // The protect volatile, then onHit adds or restarts 'stall'.
+                    // The protect volatile (TryAddVolatile, then its start),
+                    // then onHit adds or restarts 'stall'.
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.protect = Some(p);
                     self.stamp_volatile(t, ResidualVol::Protect);
                     log_line!(self, "|-singleturn|{ti}|{}", p.start_name());
@@ -124,12 +126,15 @@ impl Battle {
                     false
                 }
                 MoveKind::FollowMe => {
+                    // addVolatile: TryAddVolatile sorts first.
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.follow_me = true;
                     self.stamp_volatile(t, ResidualVol::FollowMe);
                     log_line!(self, "|-singleturn|{ti}|move: Follow Me");
                     true
                 }
                 MoveKind::RagePowder => {
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.rage_powder = true;
                     self.stamp_volatile(t, ResidualVol::RagePowder);
                     log_line!(self, "|-singleturn|{ti}|move: Rage Powder");
@@ -275,6 +280,7 @@ impl Battle {
             if blocked {
                 result = true;
             } else if self.mon(p).vol.perish == 0 {
+                self.try_add_volatile_sort(p);
                 self.mon_mut(p).vol.perish = 4;
                 self.stamp_volatile(p, ResidualVol::Perish);
                 let pi = self.ident(p);

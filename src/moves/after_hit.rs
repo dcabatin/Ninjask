@@ -343,6 +343,7 @@ impl Battle {
             }
             if self.dex.move_kind[m as usize] == MoveKind::ThroatChop {
                 if self.mon(t).hp > 0 && self.mon(t).vol.throat_chop == 0 {
+                    self.try_add_volatile_sort(t);
                     self.mon_mut(t).vol.throat_chop = 2;
                     self.stamp_volatile(t, ResidualVol::ThroatChop);
                     let ti = self.ident(t);
@@ -681,7 +682,9 @@ impl Battle {
             .collect();
         let mut holders = self.all_active();
         holders.sort_by_key(|h| h.0 != r.0);
-        for h in holders {
+        // alliesAndSelf() and foes() leave out a Pokémon with no HP left
+        // (a user its recoil knocked out, its faint not yet announced).
+        for h in holders.into_iter().filter(|&h| self.mon(h).hp > 0) {
             if self.raw_ability_kind(h) == AbilityKind::Opportunist {
                 hs.push((H::Opportunist(h), ModHandler::new(0, self.mon(h).speed, 7)));
             }

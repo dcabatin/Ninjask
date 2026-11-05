@@ -75,7 +75,7 @@ the new `_core.abi3.so`.
   synthetic games (a Klutz Golurk Tricking away a Metronome).
 - Found by "chaos" games, whose every Pokémon carries Illusion, Imposter,
   Transform, Reflect Type, Perish Song, Future Sight, Skill Swap and the
-  like (40 of 51 diverging games in 2,000 now match):
+  like (all 51 diverging games in 2,000 now match):
   - Type knowledge as Showdown keeps it (`knownType`): a Pokémon that
     transforms into a foe, or Reflect Types one, hides its new types until
     something attacks it, so Reflect Type on such an ally keeps the old
@@ -105,6 +105,12 @@ the new `_core.abi3.so`.
     Ingrain or Smack Down, so a grounded Bug/Flying holder resists Ground.
   - A residual ability handler suppressed by Gastro Acid still gets the
     faint check after it (a Perish Song faint shows before `upkeep`).
+  - The AfterMove handlers leave out a Pokémon left with no HP (a user
+    its own recoil knocked out), as `alliesAndSelf()` and `foes()` do.
+  - Volatiles that Showdown adds with `addVolatile` now run the
+    TryAddVolatile sort first, which draws when two handlers tie (two
+    Sweet Veils): Protect's and Wide Guard's `stall`, Follow Me, Rage
+    Powder, Perish Song and Throat Chop's secondary.
 
 ### Changed
 
