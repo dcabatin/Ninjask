@@ -154,6 +154,13 @@ the new `_core.abi3.so`.
   - Every side move runs TryHitSide's sort over its side's Magic Bounce,
     Sap Sipper and Soundproof holders; Sap Sipper drinks a Grass move
     aimed at its side, and Soundproof announces a sound one.
+  - Replacing or suppressing Illusion (Simple Beam, Worry Seed,
+    Entrainment, Gastro Acid) breaks the disguise first, as its onEnd does.
+  - An ignored White Herb (Magic Room, Klutz) still sorts in AfterMove
+    and AfterMega.
+  - TryBoost's handlers (the target's own ability and each Flower Veil on
+    its side) run in speed order: a faster ally's Flower Veil blocks a
+    drop before Mirror Armor reflects it.
 
 ### Changed
 

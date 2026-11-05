@@ -694,7 +694,9 @@ impl Battle {
             if self.raw_ability_kind(h) == AbilityKind::Opportunist {
                 hs.push((H::Opportunist(h), ModHandler::new(0, self.mon(h).speed, 7)));
             }
-            if self.item_kind(h) == Some(ItemKind::WhiteHerb) {
+            // An ignored White Herb (Magic Room, Klutz) still sorts; it is
+            // checked when run.
+            if self.held_item_kind(h) == Some(ItemKind::WhiteHerb) {
                 hs.push((H::WhiteHerb(h), ModHandler::new(0, self.mon(h).speed, 8)));
             }
         }

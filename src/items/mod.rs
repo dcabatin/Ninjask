@@ -191,7 +191,8 @@ impl Battle {
             if self.raw_ability_kind(r) == crate::kinds::AbilityKind::Opportunist {
                 hs.push((r, false, ModHandler::new(0, self.mon(r).speed, 7)));
             }
-            if self.item_kind(r) == Some(ItemKind::WhiteHerb) {
+            // An ignored White Herb still sorts (checked when run).
+            if self.held_item_kind(r) == Some(ItemKind::WhiteHerb) {
                 hs.push((r, true, ModHandler::new(0, self.mon(r).speed, 8)));
             }
         }

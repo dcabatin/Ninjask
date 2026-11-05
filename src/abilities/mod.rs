@@ -384,8 +384,54 @@ impl Battle {
         success
     }
 
-    /// `TryBoost` handlers: the target's ability, then an ally's Flower Veil.
+    /// `TryBoost` handlers: the target's own ability's and the Flower Veils
+    /// on its side (`onAllyTryBoost`, its own included), sorted by speed
+    /// (ties drawn), each run in turn: a faster ally's Flower Veil blocks a
+    /// drop before the target's Mirror Armor sends it back. A suppressed
+    /// one still sorts, and does nothing when run.
     fn try_boost(
+        &mut self,
+        t: MonRef,
+        b: &mut Boosts,
+        present: &mut [bool; 7],
+        source: Option<MonRef>,
+        effect: EffectRef,
+    ) {
+        use crate::abilities::{compare_mod, ModHandler};
+        let own = matches!(
+            self.raw_ability_kind(t),
+            AbilityKind::ClearBody
+                | AbilityKind::HyperCutter
+                | AbilityKind::BigPecks
+                | AbilityKind::KeenEye
+                | AbilityKind::IntimidateImmune
+                | AbilityKind::MirrorArmor
+                | AbilityKind::GuardDog
+        );
+        let mut side: Small<MonRef> = smallvec::smallvec![t];
+        side.extend(self.allies_of(t));
+        let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
+        if own {
+            hs.push((None, ModHandler::new(0, self.mon(t).speed, 7)));
+        }
+        for h in side {
+            if self.mon(h).hp > 0 && self.raw_ability_kind(h) == AbilityKind::FlowerVeil {
+                hs.push((Some(h), ModHandler::new(0, self.mon(h).speed, 7)));
+            }
+        }
+        if hs.len() > 1 {
+            self.speed_sort_by(&mut hs, |a, b| compare_mod(&a.1, &b.1));
+        }
+        for &(h, _) in hs.iter() {
+            match h {
+                None => self.own_try_boost(t, b, present, source, effect),
+                Some(h) => self.flower_veil_try_boost(t, h, b, present, source, effect),
+            }
+        }
+    }
+
+    /// The target's own ability's `onTryBoost`.
+    fn own_try_boost(
         &mut self,
         t: MonRef,
         b: &mut Boosts,
@@ -474,31 +520,40 @@ impl Battle {
             }
             _ => {}
         }
-        // Flower Veil on the target or its ally protects Grass types from others.
+    }
+
+    /// Flower Veil's `onAllyTryBoost` (the holder's own side, itself
+    /// included): Grass types are safe from others' drops.
+    fn flower_veil_try_boost(
+        &mut self,
+        t: MonRef,
+        holder: MonRef,
+        b: &mut Boosts,
+        present: &mut [bool; 7],
+        source: Option<MonRef>,
+        effect: EffectRef,
+    ) {
+        if source == Some(t) || !self.has_ability(holder, AbilityKind::FlowerVeil) {
+            return;
+        }
         let grass = self
             .dex
             .type_id("Grass")
             .map(|g| self.has_type_of(t, g))
             .unwrap_or(false);
-        if grass && by_other {
-            let mut holders: Small<MonRef> = smallvec::smallvec![t];
-            holders.extend(self.allies_of(t));
-            if let Some(&holder) = holders
-                .iter()
-                .find(|&&h| self.has_ability(h, AbilityKind::FlowerVeil))
-            {
-                let mut blocked = false;
-                for i in 0..7 {
-                    if present[i] && b[i] < 0 {
-                        present[i] = false;
-                        blocked = true;
-                    }
-                }
-                if blocked && !quiet {
-                    let hi = self.ident(holder);
-                    log_line!(self, "|-block|{ident}|ability: Flower Veil|[of] {hi}");
-                }
+        if !grass {
+            return;
+        }
+        let mut blocked = false;
+        for i in 0..7 {
+            if present[i] && b[i] < 0 {
+                present[i] = false;
+                blocked = true;
             }
+        }
+        if blocked && !self.effect_has_secondaries(effect) {
+            let (ti, hi) = (self.ident(t), self.ident(holder));
+            log_line!(self, "|-block|{ti}|ability: Flower Veil|[of] {hi}");
         }
     }
 

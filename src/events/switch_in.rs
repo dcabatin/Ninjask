@@ -194,6 +194,10 @@ impl Battle {
             AbilityKind::SupremeOverlord => self.supreme_overlord_on_end(r),
             AbilityKind::SuppressWeather => self.air_lock_on_end(r),
             AbilityKind::Opportunist => self.mon_mut(r).ability_state.opp_boosts = None,
+            // Illusion's onEnd (its ability replaced or suppressed: Simple
+            // Beam, Worry Seed, Entrainment, Gastro Acid): the disguise drops,
+            // unless the Pokémon is being called back.
+            AbilityKind::Illusion if !self.turn_state.called_back => self.end_illusion(r),
             _ => {}
         }
     }

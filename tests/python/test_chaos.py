@@ -47,6 +47,8 @@ GAMES = [
     (3, 971),  # Baton Pass clears the newcomer's move results
     (3, 986),  # Healing Wish fails after Libero
     (4, 1935),  # Cud Chew under Magic Room
+    (9, 3075),  # Simple Beam breaks Illusion
+    (9, 3418),  # an ignored White Herb still sorts
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -55,6 +57,7 @@ MIXED = [
     (8, 939, "mixed"),  # Sheer Force lost to Wandering Spirit: Life Orb recoil
     (8, 2608, "mixed"),  # Flower Veil announces Octolock's drop
     (8, 3306, "mixed"),  # TryHitSide sorts Sap Sipper and Soundproof
+    (10, 1620, "wide"),  # Flower Veil before a slower Mirror Armor
 ]
 
 
