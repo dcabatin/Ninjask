@@ -337,6 +337,7 @@ function project(battle) {
 				types: p.getTypes(),
 				// Forest's Curse, Trick-or-Treat: the type getTypes() ends with.
 				addedType: p.addedType || null,
+				knownType: !!p.knownType,
 				item: p.item || null,
 				// Harvest, Pickup and Recycle read it.
 				lastItem: p.lastItem || null,

@@ -8,7 +8,7 @@ A native interface for training (`ninjask.Batch`, player-view legal
 choices, numeric observations), experimental exact outcome enumeration
 contributed by CalebBrody (dcabatin/Ninjask#8), and `research/` on what
 trading parity for speed would buy. Every seeded game gives the same logs,
-requests and draws as 0.3.0 except where the three fixes below apply; the
+requests and draws as 0.3.0 except where the fixes below apply; the
 fingerprint is still `6e2f85907f97e4e9`.
 
 Upgrading an editable checkout from before 0.3.0: delete
@@ -73,6 +73,23 @@ the new `_core.abi3.so`.
   Choice lock. The engine skipped them. At switch-in an ignored item
   still does nothing. Found by the large reference run in 1 of 5,000
   synthetic games (a Klutz Golurk Tricking away a Metronome).
+- Found by "chaos" games, whose every Pokémon carries Illusion, Imposter,
+  Transform, Reflect Type, Perish Song, Future Sight, Skill Swap and the
+  like (40 of 51 diverging games in 2,000 now match):
+  - Type knowledge as Showdown keeps it (`knownType`): a Pokémon that
+    transforms into a foe, or Reflect Types one, hides its new types until
+    something attacks it, so Reflect Type on such an ally keeps the old
+    apparent type, and the end-of-turn catch-up looks at the teammate a
+    disguised Zoroark appears as. Status moves now count as attacks for it
+    (`attackedBy`), and the projection carries `knownType`.
+  - A fainted Pokémon's queued move no longer sorts the Unaware holders
+    when the queue is re-sorted (it isn't active any more), which drew an
+    extra random number.
+  - Opportunist's onEnd forgets its pending boosts (also on fainting).
+  - Revival Blessing with nobody to revive fails after Protean and Libero
+    act (its check is onTryHit), not before.
+  - Struggle is typeless (`???`) rather than Stellar, so Protean and Libero
+    leave it alone and it gets no STAB.
 
 ### Changed
 

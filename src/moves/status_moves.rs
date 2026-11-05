@@ -1274,9 +1274,11 @@ impl Battle {
             .map(|(a, _)| a)
             .unwrap_or(old);
         let new = [types[0], types.get(1).copied().unwrap_or(NO_TYPE)];
+        let unknown = t.0 != r.0 || self.mon(t).vol.type_unknown;
         self.mon_mut(r).types = new;
         self.mon_mut(r).added_type = added;
-        self.mon_mut(r).vol.apparent_types = (t.0 != r.0).then_some((stale, new));
+        self.mon_mut(r).vol.type_unknown = unknown;
+        self.mon_mut(r).vol.apparent_types = unknown.then_some((stale, new));
         true
     }
 
@@ -1379,6 +1381,7 @@ impl Battle {
 
     /// Showdown `setType`: the Pokémon's types, and its added type is gone.
     pub(crate) fn set_type(&mut self, r: MonRef, types: [TypeId; 2]) {
+        self.reset_type_knowledge(r);
         let m = self.mon_mut(r);
         m.types = types;
         m.added_type = NO_TYPE;

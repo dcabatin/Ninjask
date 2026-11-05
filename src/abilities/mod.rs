@@ -1191,11 +1191,22 @@ impl Battle {
 
     /// The turn's start (`endTurn`'s loop): an apparentType that differs
     /// from the real types is brought up to date with a silent `typechange`.
+    /// Showdown checks `pokemon.illusion || pokemon`: a disguised Pokémon
+    /// checks the teammate it appears as (an active ally's stale type is
+    /// caught up under the disguised Pokémon's name, before the ally's own
+    /// turn in the loop), and its own stale type waits until the disguise
+    /// breaks.
     pub(crate) fn sync_apparent_type(&mut self, r: MonRef) {
-        let Some((apparent, real)) = self.mon_mut(r).vol.apparent_types.take() else {
+        let seen = self
+            .mon(r)
+            .illusion
+            .as_ref()
+            .and_then(|n| self.sides[r.0].mons.iter().position(|x| *x.name == **n))
+            .map_or(r, |i| (r.0, i));
+        let Some((apparent, real)) = self.mon_mut(seen).vol.apparent_types.take() else {
             return;
         };
-        if self.mon(r).types != real {
+        if self.mon(seen).types != real {
             return;
         }
         let names = |b: &Battle, t: [TypeId; 2]| {
@@ -1205,7 +1216,7 @@ impl Battle {
                 .collect::<Vec<_>>()
                 .join("/")
         };
-        let now = names(self, self.base_types_of(r));
+        let now = names(self, self.base_types_of(seen));
         if now != names(self, apparent) {
             let ri = self.ident(r);
             log_line!(self, "|-start|{ri}|typechange|{now}|[silent]");

@@ -187,6 +187,11 @@ pub struct Volatiles {
     /// `apparentType` catches up with a silent `typechange` at the next
     /// turn's start, if the real types are still those.
     pub apparent_types: Option<([TypeId; 2], [TypeId; 2])>,
+    /// Showdown `!knownType`: the other side can't be sure of this
+    /// Pokémon's types. Transform and Reflect Type from a foe (or from an
+    /// ally whose types are unknown) leave it so; setType, setSpecies and
+    /// being attacked by the turn's end make the types known again.
+    pub type_unknown: bool,
     /// Torment: the last move can't be chosen again.
     pub torment: bool,
     /// When each volatile with a residual handler was added (a battle-wide
@@ -408,7 +413,8 @@ pub struct Mon {
     /// Hits taken from moves since switching in (Showdown `timesAttacked`;
     /// Champions resets it in `clearVolatile`), for Rage Fist.
     pub times_attacked: u16,
-    /// Showdown `attackedBy`, numbered damage only (Avalanche, Comeuppance).
+    /// Showdown `attackedBy`: every move that reached the Pokémon (Avalanche,
+    /// Comeuppance read the numbered ones; any entry makes its types known).
     pub attacked_by: Vec<Attacker>,
     /// Showdown `statsRaisedThisTurn`: a boost raised a stat this turn.
     /// Alluring Voice, Burning Jealousy.
@@ -477,6 +483,9 @@ pub struct Attacker {
     pub mv: crate::dex::types::MoveId,
     pub this_turn: bool,
     pub slot: (u8, u8),
+    /// The hit gave a number (`typeof damageValue === 'number'`): a status
+    /// move's entry doesn't, and `getLastDamagedBy` skips it.
+    pub numbered: bool,
 }
 
 impl Mon {

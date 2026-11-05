@@ -597,7 +597,11 @@ impl Battle {
     /// when two of them tie. Only an active Pokémon has handlers.
     #[track_caller]
     pub fn action_speed_draw(&mut self, r: MonRef) -> i32 {
-        if self.mon(r).is_active {
+        // findEventHandlers collects nothing for a target that isn't active,
+        // and Showdown's faintMessages makes a fainted Pokémon inactive (its
+        // queued move still gets a speed when the queue is re-sorted).
+        let m = self.mon(r);
+        if m.is_active && !m.fainted {
             self.sort_unaware_handlers();
         }
         self.action_speed(r)
@@ -989,6 +993,10 @@ impl Battle {
                         }
                     }
                     self.store_disabled_moves(r);
+                    // `if (pokemon.getLastAttackedBy()) pokemon.knownType = true`.
+                    if !self.mon(r).attacked_by.is_empty() {
+                        self.mon_mut(r).vol.type_unknown = false;
+                    }
                     self.sync_apparent_type(r);
                     self.run_trap_pokemon(r, true);
                     self.reset_turn_flags(r);
@@ -1053,6 +1061,7 @@ impl Battle {
             .unwrap_or_default();
         let dex = self.dex.clone();
         let sp = dex.species(mega);
+        self.reset_type_knowledge(r);
         {
             let m = self.mon_mut(r);
             // formeChange(isPermanent): the Mega becomes the base species.

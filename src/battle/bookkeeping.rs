@@ -126,11 +126,20 @@ impl Battle {
             .attacked_by
             .iter()
             .rev()
-            .find(|a| a.side as usize != r.0)
+            .find(|a| a.numbered && a.side as usize != r.0)
     }
 
     /// `gotAttacked` for a target that took a hit's damage.
     pub(crate) fn got_attacked(&mut self, t: MonRef, src: MonRef, mv: MoveId, damage: u32) {
+        self.push_attacker(t, src, mv, damage, true);
+    }
+
+    /// `gotAttacked` for a target a status move reached: no damage number.
+    pub(crate) fn got_attacked_by_status(&mut self, t: MonRef, src: MonRef, mv: MoveId) {
+        self.push_attacker(t, src, mv, 0, false);
+    }
+
+    fn push_attacker(&mut self, t: MonRef, src: MonRef, mv: MoveId, damage: u32, numbered: bool) {
         let a = Attacker {
             side: src.0 as u8,
             name: self.mon(src).name.clone(),
@@ -138,8 +147,16 @@ impl Battle {
             mv,
             this_turn: true,
             slot: (src.0 as u8, self.mon(src).position as u8),
+            numbered,
         };
         self.mon_mut(t).attacked_by.push(a);
+    }
+
+    /// `setType` / `setSpecies`: the types are known and seen as they are.
+    pub(crate) fn reset_type_knowledge(&mut self, r: MonRef) {
+        let v = &mut self.mon_mut(r).vol;
+        v.type_unknown = false;
+        v.apparent_types = None;
     }
 
     /// A move's damage left the target at 0 HP: its faint comes from the move.

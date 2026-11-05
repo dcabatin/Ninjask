@@ -406,10 +406,15 @@ impl Battle {
             // The ability's End, then the forme reverts (Showdown faintMessages).
             self.air_lock_on_end(r);
             self.supreme_overlord_on_end(r);
+            // Opportunist's onEnd forgets the boosts it was holding.
+            if self.raw_ability_kind(r) == AbilityKind::Opportunist {
+                self.mon_mut(r).ability_state.opp_boosts = None;
+            }
             self.clear_transform(r);
             self.revert_forme(r);
             self.clear_volatile_links(r);
             let types = self.dex.species(self.mon(r).species).types;
+            self.reset_type_knowledge(r);
             let m = self.mon_mut(r);
             m.fainted = true;
             m.types = types;

@@ -290,6 +290,7 @@ impl Battle {
                             "illusion": m.illusion,
                             "heroMessageDisplayed": m.hero_message_displayed,
                             "addedType": (m.added_type != NO_TYPE).then(|| self.dex.type_names[m.added_type as usize].clone()),
+                            "knownType": !m.vol.type_unknown,
                         });
                         self.project_mon_extras(m, &mut out);
                         // The volatiles with handlers, in the order they were added.

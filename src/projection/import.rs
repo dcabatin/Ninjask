@@ -205,6 +205,7 @@ fn import_mon(dex: &Dex, v: &Value, position: usize, stamp: &mut u32) -> Result<
         }
     }
     let mut vol = projected_volatiles(dex, vols);
+    vol.type_unknown = v["knownType"].as_bool() == Some(false);
     // The order the volatiles with handlers were added in.
     let charging_id = vol
         .charging

@@ -55,10 +55,20 @@ impl Battle {
                 }
             })
             .collect();
+        // knownType from an ally whose types are known only; apparentType
+        // is the target's (a stale one, from its Reflect Type, included).
+        let unknown = t.0 != r.0 || tm.vol.type_unknown;
+        let apparent = tm
+            .vol
+            .apparent_types
+            .filter(|&(_, real)| real == tm.types)
+            .map(|(a, _)| (a, tm.types));
         let m = self.mon_mut(r);
         m.transformed = Some(Box::new(backup));
         m.types = tm.types;
         m.added_type = tm.added_type;
+        m.vol.type_unknown = unknown;
+        m.vol.apparent_types = apparent;
         // storedStats, not the stored speed: setSpecies set that already.
         m.stats[1..].copy_from_slice(&tm.stats[1..]);
         m.moves = moves;

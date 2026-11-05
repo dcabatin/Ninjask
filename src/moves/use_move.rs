@@ -453,11 +453,10 @@ impl Battle {
                 t = self.dex.type_id(name).unwrap_or(t);
             }
         }
-        // Struggle's onModifyMove: type `???`, which nothing resists, is
-        // immune to or shares. Stellar behaves the same here (no Pokémon
-        // has it), so it stands in.
+        // Struggle's onModifyMove: type `???`, which nothing resists or is
+        // immune to; Protean and Libero skip it.
         if kind == MoveKind::Struggle {
-            return (self.dex.ids.types.stellar.unwrap_or(t), false);
+            return (self.dex.ids.types.typeless.unwrap_or(t), false);
         }
         if kind == MoveKind::WeatherBall {
             if let Some(w) = self.move_weather() {
@@ -933,8 +932,6 @@ impl Battle {
             MoveKind::FollowMe | MoveKind::RagePowder => self.sides[r.0].n_active > 1,
             MoveKind::AuroraVeil => self.effective_weather() == Some(Weather::Snow),
             MoveKind::SteelRoller => self.field.terrain.is_some(),
-            // onTryHit: a fainted teammate to revive.
-            MoveKind::RevivalBlessing => self.sides[r.0].mons.iter().any(|m| m.fainted),
             MoveKind::ClangorousSoul => {
                 let m = self.mon(r);
                 m.hp as u32 * 100 > m.maxhp as u32 * 33 && m.maxhp != 1
@@ -996,6 +993,14 @@ impl Battle {
             return Some(false);
         }
         self.run_prepare_hit(r, mv, move_type, bounced);
+        // Revival Blessing's onTryHit (after PrepareHit, so Protean and
+        // Libero change the type first): a fainted teammate to revive.
+        if kind == MoveKind::RevivalBlessing && !self.sides[r.0].mons.iter().any(|m| m.fainted) {
+            log_line!(self, "|-fail|{ident}");
+            self.attr_move_line(line, "[still]");
+            self.run_move_fail(r, last, mv, kind);
+            return Some(false);
+        }
         // Fling's PrepareHit: the thrown item's power and secondary effect.
         let flung;
         let mv = match fling_move {
@@ -1331,6 +1336,13 @@ impl Battle {
             hit = !hit_list.is_empty();
             if !hit {
                 live.clear();
+            }
+            // The hit loop's gotAttacked on every target it kept (no damage
+            // number for a status move).
+            for &t in live.iter() {
+                if t != r {
+                    self.got_attacked_by_status(t, r, mv.idx);
+                }
             }
             // Status moves go through the same hit loop (Champions
             // `hitStepMoveHitLoop`): eachEvent('Update') after the hit, and

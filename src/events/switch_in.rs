@@ -193,6 +193,7 @@ impl Battle {
             AbilityKind::Unnerve => self.mon_mut(r).ability_state.unnerved = Some(false),
             AbilityKind::SupremeOverlord => self.supreme_overlord_on_end(r),
             AbilityKind::SuppressWeather => self.air_lock_on_end(r),
+            AbilityKind::Opportunist => self.mon_mut(r).ability_state.opp_boosts = None,
             _ => {}
         }
     }

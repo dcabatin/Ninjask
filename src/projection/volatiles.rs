@@ -143,6 +143,7 @@ impl Battle {
             let attacked: Vec<Value> = m
                 .attacked_by
                 .iter()
+                .filter(|a| a.numbered)
                 .map(|a| {
                     json!({
                         "source": format!("p{}:{}", a.side + 1, a.name),
@@ -174,6 +175,7 @@ impl Battle {
                             damage: e["damage"].as_u64()? as u32,
                             mv: dex.move_id(e["move"].as_str()?)?,
                             this_turn: e["thisTurn"].as_bool()?,
+                            numbered: true,
                             slot: (
                                 slot.get(1)?.wrapping_sub(b'1'),
                                 slot.get(2)?.wrapping_sub(b'a'),

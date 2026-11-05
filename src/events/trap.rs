@@ -72,7 +72,8 @@ impl Battle {
         if !immune && traps {
             self.mon_mut(r).trapped = Trapped::Yes;
         }
-        if !immune {
+        // MaybeTrapPokemon runs when the types are unknown, or not immune.
+        if !immune || self.mon(r).vol.type_unknown {
             if draw && tags.len() > 1 {
                 self.speed_sort_by(&mut tags, compare_mod);
             }
