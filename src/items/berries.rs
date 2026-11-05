@@ -49,6 +49,7 @@ impl Battle {
                 return false;
             }
         }
+        let try_eat = !force;
         let ident = self.ident(r);
         let name = self.item_name(r);
         // `heal` names the source when it is another Pokémon (Teatime's user).
@@ -56,8 +57,11 @@ impl Battle {
             Some(s) => format!("|[of] {}", self.ident(s)),
             None => String::new(),
         };
-        // Ripen's TryEatItem (priority -1, after the berry's own).
-        self.ripen_on_try_eat_item(r);
+        // Ripen's TryEatItem (priority -1, after the berry's own); a forced
+        // eat (Teatime, Stuff Cheeks) skips the event.
+        if try_eat {
+            self.ripen_on_try_eat_item(r);
+        }
         log_line!(self, "|-enditem|{ident}|{name}|[eat]");
         self.run_eat(r, kind, &name, &of);
         // runEvent('EatItem'): Cheek Pouch, Cud Chew.

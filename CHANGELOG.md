@@ -206,6 +206,12 @@ the new `_core.abi3.so`.
     partial trap it set ends. A substitute's damage takes Unaware from
     Showdown's `activeTarget`, the last target of the accuracy step, so on
     a spread move another target's Unaware can ignore the user's stages.
+  - A forced eat (Teatime) skips TryEatItem, so Ripen isn't announced;
+    Oblivious and Own Tempo on a Pokémon with no HP announce themselves
+    but can't remove the volatile (removeVolatile needs HP); a switch-in
+    item handler belongs to the item it was collected for, so Symbiosis
+    mid-switch-in skips the new holder's and still announces a given-away
+    Air Balloon for its old holder.
 
 ### Changed
 

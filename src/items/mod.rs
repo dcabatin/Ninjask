@@ -132,6 +132,19 @@ impl Battle {
         }
     }
 
+    /// A switch-in item handler whose item was taken after the handlers
+    /// were collected (its state cleared in place): Air Balloon's onStart
+    /// still announces it; the others do nothing without the item.
+    pub(crate) fn taken_item_on_switch_in(&mut self, r: MonRef, item: ItemId) {
+        if self.dex.item_kind[item as usize] == ItemKind::AirBalloon
+            && !self.ignoring_item(r)
+            && self.field.gravity == 0
+        {
+            let ident = self.ident(r);
+            log_line!(self, "|-item|{ident}|Air Balloon");
+        }
+    }
+
     /// An item's `onStart` when it is set (`setItem`: Trick, Recycle,
     /// Symbiosis...). `singleEvent('Start')` runs even on a holder that
     /// ignores its item (Klutz, Magic Room); the seeds and Air Balloon check

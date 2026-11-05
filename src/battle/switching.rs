@@ -9,7 +9,8 @@ use crate::state::*;
 #[derive(Clone, Copy, Debug)]
 enum SwitchInHandler {
     Ability,
-    Item,
+    /// The item held when the handlers were collected (its state).
+    Item(crate::dex::types::ItemId),
     WhiteHerb,
     /// Toxic Spikes on the switcher's side (a side condition: subOrder 4).
     ToxicSpikes,
@@ -92,7 +93,9 @@ impl Battle {
                 handlers.push((r, SwitchInHandler::Ability, priority, key, 7, 0));
             }
             if let Some(priority) = self.item_switch_in_priority(r) {
-                handlers.push((r, SwitchInHandler::Item, priority, key, 8, 0));
+                if let Some(item) = self.mon(r).item {
+                    handlers.push((r, SwitchInHandler::Item(item), priority, key, 8, 0));
+                }
             }
             if self.slot_reacts_to_switch_in(r) {
                 handlers.push((r, SwitchInHandler::HealingWish, 0, key, 3, 0));
@@ -138,7 +141,15 @@ impl Battle {
                     self.air_lock_on_switch_in(r);
                     self.run_start(r)
                 }
-                SwitchInHandler::Item => self.item_on_switch_in(r),
+                // The handler holds the item's state: a new item (setItem:
+                // Symbiosis) skips it; one taken (cleared in place) still
+                // runs the collected item's onStart, so a balloon given away
+                // is announced for its old holder.
+                SwitchInHandler::Item(item) => match self.mon(r).item {
+                    Some(now) if now == item => self.item_on_switch_in(r),
+                    Some(_) => {}
+                    None => self.taken_item_on_switch_in(r, item),
+                },
                 SwitchInHandler::WhiteHerb => self.white_herb_check(r),
                 SwitchInHandler::Opportunist => self.opportunist_release(r),
                 SwitchInHandler::ToxicSpikes => self.toxic_spikes_switch_in(r),
