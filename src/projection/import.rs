@@ -78,7 +78,7 @@ pub(crate) fn projected_volatiles(dex: &Dex, vols: &Value) -> Volatiles {
         roost: vols.get("roost").is_some(),
         perish: vols["perishsong"]["duration"].as_u64().unwrap_or(0) as u8,
         heal_block: vols["healblock"]["duration"].as_u64().unwrap_or(0) as u8,
-        substitute: vols["substitute"]["hp"].as_u64().unwrap_or(0) as u16,
+        substitute_halves: (vols["substitute"]["hp"].as_f64().unwrap_or(0.0) * 2.0).round() as u16,
         added: Default::default(),
         ..Default::default()
     };

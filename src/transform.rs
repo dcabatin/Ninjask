@@ -27,7 +27,7 @@ impl Battle {
         if tm.fainted
             || m.illusion.is_some()
             || tm.illusion.is_some()
-            || tm.vol.substitute > 0
+            || tm.vol.substitute_halves > 0
             || tm.transformed.is_some()
             || m.transformed.is_some()
         {

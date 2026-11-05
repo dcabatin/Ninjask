@@ -369,7 +369,7 @@ impl Battle {
     /// own, and not a `bypasssub` move or an Infiltrator's.
     pub(crate) fn hits_substitute(&self, src: MonRef, t: MonRef, mv: &Move) -> bool {
         t != src
-            && self.mon(t).vol.substitute > 0
+            && self.mon(t).vol.substitute_halves > 0
             && !mv.has(MoveFlag::BypassSub)
             && !self.infiltrates(src)
             && !self.ally_puff_on_try_hit(src, &[t], self.dex.move_kind[mv.idx as usize])
@@ -816,9 +816,19 @@ impl Battle {
         spread: bool,
     ) {
         let dmg = self.move_damage(r, t, mv, kind, move_type, type_changed, spread);
-        let sub = self.mon(t).vol.substitute as u32;
+        // In half points: Metal Burst's and Comeuppance's 1.5 times reaches
+        // the substitute unrounded.
+        let dmg = match kind {
+            MoveKind::Comeuppance | MoveKind::MetalBurst
+                if mv.ohko.is_none() && mv.fixed_damage.is_none() =>
+            {
+                self.counter_burst_halves(r)
+            }
+            _ => dmg * 2,
+        };
+        let sub = self.mon(t).vol.substitute_halves as u32;
         let dmg = dmg.min(sub);
-        self.mon_mut(t).vol.substitute = (sub - dmg) as u16;
+        self.mon_mut(t).vol.substitute_halves = (sub - dmg) as u16;
         let ti = self.ident(t);
         if dmg == sub {
             if mv.ohko.is_some() {
@@ -829,11 +839,11 @@ impl Battle {
             log_line!(self, "|-activate|{ti}|move: Substitute|[damage]");
         }
         if dmg > 0 {
-            self.recoil(r, mv, kind, dmg);
+            self.recoil_halves(r, mv, kind, dmg);
         }
         if let Some((n, d)) = mv.drain {
             // Rounded up here, unlike a drain from the Pokémon's own HP.
-            let amount = (dmg * n).div_ceil(d);
+            let amount = (dmg * n).div_ceil(2 * d);
             if amount > 0 && !self.liquid_ooze_on_source_try_heal(r, t, amount) {
                 let amount = self.drain_heal_mod(r, amount);
                 self.heal(r, amount, &format!("|[from] drain|[of] {ti}"));

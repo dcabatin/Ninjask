@@ -60,6 +60,12 @@ the new `_core.abi3.so`.
   Showdown, whose queued move keeps the target it was resolved with: its
   onHit then curses a random foe directly, so Good as Gold doesn't stop
   it. The engine aimed it at a foe instead, which Good as Gold blocked.
+- Metal Burst and Comeuppance deal 1.5 times an odd damage to a
+  substitute unrounded, as in Showdown, which leaves the substitute with
+  x.5 HP. Two such hits add up to a whole point a later hit no longer
+  has to take, and a drain or recoil from breaking such a substitute is
+  rounded from the x.5. The engine rounded the damage down. The
+  projection shows the half (`"hp": 30.5`).
 
 ### Changed
 

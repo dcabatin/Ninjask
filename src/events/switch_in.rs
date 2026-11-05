@@ -55,7 +55,7 @@ impl Battle {
                 }
                 for t in targets {
                     // A substitute makes the foe immune.
-                    if self.mon(t).vol.substitute > 0 {
+                    if self.mon(t).vol.substitute_halves > 0 {
                         let ti = self.ident(t);
                         log_line!(self, "|-immune|{ti}");
                         continue;

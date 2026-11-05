@@ -569,3 +569,52 @@ def test_curse_chosen_before_mega_evolving_into_a_ghost_bypasses_good_as_gold(ca
     assert "p2a: Gholdengo" in cursed, cursed
     assert not any("Good as Gold" in line for log in logs for line in log)
 
+
+def test_metal_burst_and_comeuppance_leave_a_substitute_half_points():
+    """1.5 times an odd damage reaches a substitute unrounded (Substitute's
+    onTryPrimaryHit takes getDamage as it is), so Showdown leaves it x.5 HP;
+    the projection says so, and the reference check compares it."""
+    idle = ["CalmMind"]
+    t1 = _team(
+        _packed("Aggron", "", "sturdy", ["MetalBurst", "CalmMind"]),
+        _packed("Kingambit", "", "defiant", ["Comeuppance", "CalmMind"]),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    t2 = _team(
+        _packed("Dragonite", "", "innerfocus", ["Substitute", "RockSlide", "CalmMind"], "Modest"),
+        _packed("Gholdengo", "", "goodasgold", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    script = ["team 1234", "team 1234", "move 2, move 2", "move 1, move 1", "move 1, move 1", "move 2, move 1"]
+    d = dex(_check_reference().FORMAT)
+    hps = []
+    for seed in range(12):
+        b = ninjask.Battle(d, t1, t2, seed)
+        for side, choice in zip(["p1", "p2"] * 3, script):
+            b.choose(side, choice)
+        hps.append(json.loads(b.projection())["sides"][1]["pokemon"][0]["volatiles"].get("substitute", {}).get("hp"))
+    assert any(isinstance(hp, float) and hp % 1 == 0.5 for hp in hps), hps
+
+
+def test_metal_burst_into_a_substitute_matches_showdown(capsys):
+    """The half points carry on: Metal Burst and Comeuppance into one
+    substitute, then Drain Punch breaking what is left (its drain is
+    rounded up from the x.5 damage)."""
+    idle = ["CalmMind"]
+    t1 = _team(
+        _packed("Aggron", "", "sturdy", ["MetalBurst", "CalmMind", "DrainPunch"]),
+        _packed("Kingambit", "", "defiant", ["Comeuppance", "CalmMind"]),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    t2 = _team(
+        _packed("Dragonite", "", "innerfocus", ["Substitute", "RockSlide", "CalmMind"], "Modest"),
+        _packed("Gholdengo", "", "goodasgold", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    script = ["team 1234", "team 1234", "move 2, move 2", "move 1, move 1", "move 1, move 1", "move 2, move 1", "move 3 1, move 2", "move 3, move 1"]
+    logs = _play_scripted(range(12), "burst", t1, t2, script, capsys)
+    assert any(any(line.endswith("[from] drain|[of] p2a: Dragonite") for line in log) for log in logs)

@@ -71,7 +71,7 @@ impl Battle {
                     // onTryHit: one substitute at a time, and it costs a
                     // quarter of max HP (NOT_FAIL: no `[still]`).
                     let m = self.mon(t);
-                    if m.vol.substitute > 0 {
+                    if m.vol.substitute_halves > 0 {
                         log_line!(self, "|-fail|{ti}|move: Substitute");
                         false
                     } else if m.hp as u32 * 4 <= m.maxhp as u32 || m.maxhp == 1 {
@@ -81,7 +81,7 @@ impl Battle {
                         // TryAddVolatile, the volatile starts, then onHit pays the cost.
                         let quarter = m.maxhp / 4;
                         self.try_add_volatile_sort(t);
-                        self.mon_mut(t).vol.substitute = quarter;
+                        self.mon_mut(t).vol.substitute_halves = quarter * 2;
                         log_line!(self, "|-start|{ti}|Substitute");
                         self.end_partial_trap_silently(t);
                         self.direct_damage(t, quarter as u32, "");
@@ -1211,7 +1211,7 @@ impl Battle {
         let (ri, name) = (self.ident(r), self.dex.ability(ability).name.clone());
         log_line!(self, "|-ability|{ri}|{name}");
         for t in self.foes_of(r) {
-            if self.mon(t).vol.substitute > 0 {
+            if self.mon(t).vol.substitute_halves > 0 {
                 let ti = self.ident(t);
                 log_line!(self, "|-immune|{ti}");
             } else {
@@ -1291,7 +1291,7 @@ impl Battle {
             log_line!(self, "|-fail|{ti}");
             return false;
         }
-        if m.vol.substitute > 0 {
+        if m.vol.substitute_halves > 0 {
             log_line!(self, "|-fail|{ti}|move: Shed Tail");
             return false;
         }
@@ -1301,7 +1301,7 @@ impl Battle {
         }
         let (quarter, half) = (m.maxhp / 4, (m.maxhp as u32).div_ceil(2));
         self.try_add_volatile_sort(t);
-        self.mon_mut(t).vol.substitute = quarter;
+        self.mon_mut(t).vol.substitute_halves = quarter * 2;
         log_line!(self, "|-start|{ti}|Substitute|[from] move: Shed Tail");
         self.end_partial_trap_silently(t);
         self.direct_damage(t, half, "");

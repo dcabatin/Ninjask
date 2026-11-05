@@ -836,6 +836,14 @@ impl Battle {
         self.dex.type_id(name).unwrap_or(t)
     }
 
+    /// Comeuppance's and Metal Burst's damage in half points: 1.5 times the
+    /// last damage taken this turn, `|| 1` when that was 0 (and 0 with
+    /// none). Showdown keeps the half; only a substitute takes it unrounded.
+    pub(crate) fn counter_burst_halves(&self, r: MonRef) -> u32 {
+        self.last_damaged_by(r)
+            .map_or(0, |a| if a.damage == 0 { 2 } else { a.damage * 3 })
+    }
+
     /// A `damageCallback`: the damage the move deals instead of the formula.
     pub(crate) fn damage_callback(&self, r: MonRef, t: MonRef, kind: MoveKind) -> Option<u32> {
         match kind {
@@ -843,10 +851,7 @@ impl Battle {
             MoveKind::MirrorCoat => {
                 Some(self.mon(r).vol.mirror_coat.map_or(0, |c| c.damage.max(1)))
             }
-            MoveKind::Comeuppance | MoveKind::MetalBurst => Some(
-                self.last_damaged_by(r)
-                    .map_or(0, |a| (a.damage * 3 / 2).max(1)),
-            ),
+            MoveKind::Comeuppance | MoveKind::MetalBurst => Some(self.counter_burst_halves(r) / 2),
             MoveKind::Endeavor => {
                 Some((self.mon(t).hp as u32).saturating_sub(self.mon(r).hp as u32))
             }

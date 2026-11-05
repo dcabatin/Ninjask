@@ -41,6 +41,11 @@ fn compare_secondary_handlers(
 impl Battle {
     /// `applyRecoilDamage`, then EmergencyExit for the user.
     pub(super) fn recoil(&mut self, r: MonRef, mv: &Move, kind: MoveKind, dealt: u32) {
+        self.recoil_halves(r, mv, kind, dealt * 2);
+    }
+
+    /// `recoil` from damage in half points (to a substitute left with x.5 HP).
+    pub(super) fn recoil_halves(&mut self, r: MonRef, mv: &Move, kind: MoveKind, dealt: u32) {
         if self.mind_blown_recoil(r, kind) {
             return;
         }
@@ -57,7 +62,7 @@ impl Battle {
                     self.damage_event_sort(r);
                 }
             } else {
-                let amount = (((dealt as f64) * n as f64 / d as f64) + 0.5)
+                let amount = (((dealt as f64 / 2.0) * n as f64 / d as f64) + 0.5)
                     .floor()
                     .max(1.0) as u32;
                 self.apply_damage(r, amount, "|[from] Recoil");

@@ -119,7 +119,7 @@ impl Battle {
     pub(crate) fn defog(&mut self, r: MonRef, t: MonRef, mv: &Move) -> bool {
         use crate::state::SideCond;
         let mut success = false;
-        if self.mon(t).vol.substitute == 0 || self.infiltrates(r) {
+        if self.mon(t).vol.substitute_halves == 0 || self.infiltrates(r) {
             let mut b = [0i8; 7];
             b[Boost::Evasion as usize] = -1;
             success = self.boost(
@@ -351,8 +351,8 @@ impl Battle {
     pub(crate) fn tidy_up(&mut self, r: MonRef, mv: &Move) -> bool {
         let mut success = false;
         for a in self.all_active() {
-            if self.mon(a).vol.substitute > 0 {
-                self.mon_mut(a).vol.substitute = 0;
+            if self.mon(a).vol.substitute_halves > 0 {
+                self.mon_mut(a).vol.substitute_halves = 0;
                 let ai = self.ident(a);
                 log_line!(self, "|-end|{ai}|Substitute");
                 success = true;

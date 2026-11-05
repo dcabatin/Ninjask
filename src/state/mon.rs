@@ -81,8 +81,11 @@ pub struct Volatiles {
     pub perish: u8,
     /// Heal Block (from Psychic Noise): turns left, 0 = none.
     pub heal_block: u8,
-    /// Substitute: the substitute's HP, 0 = none.
-    pub substitute: u16,
+    /// Substitute: the substitute's HP in half points, 0 = none. Metal
+    /// Burst and Comeuppance deal 1.5 times a damage to it unrounded, so
+    /// Showdown leaves it with x.5 HP (Substitute's onTryPrimaryHit takes
+    /// getDamage as it is; only damage to a Pokémon is rounded).
+    pub substitute_halves: u16,
     /// `partiallytrapped` (Infestation, Fire Spin...): turns left (0 = none),
     /// the damage divisor (8, or 6 with Binding Band), the move, and its
     /// user's slot while the user stays on the field (`None` once it left).
