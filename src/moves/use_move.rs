@@ -311,9 +311,7 @@ impl Battle {
             self.mon_mut(r).vol.must_recharge = 0;
             return Err(None);
         }
-        let defrost = move_id
-            .map(|id| self.dex.mv(id).has(MoveFlag::Defrost))
-            .unwrap_or(false);
+        let defrost = move_id.is_some_and(|id| self.defrosts(r, id));
         match self.mon(r).status {
             Status::Slp => {
                 let dec = self.early_bird_sleep_decrement(r);
@@ -661,7 +659,7 @@ impl Battle {
         {
             self.mon_mut(r).vol.choice_lock = Some(move_id);
         }
-        if self.mon(r).status == Status::Frz && mv.has(MoveFlag::Defrost) {
+        if self.mon(r).status == Status::Frz && self.defrosts(r, move_id) {
             let ident = self.ident(r);
             log_line!(self, "|-curestatus|{ident}|frz|[from] move: {}", mv.name);
             let m = self.mon_mut(r);
@@ -1626,6 +1624,21 @@ impl Battle {
     /// `runEvent('ModifyMove')` for the abilities on the user: Stance
     /// Change (priority 1) changes forme; Mold Breaker makes the move ignore
     /// abilities.
+    /// frz's onBeforeMove and onModifyMove: a defrost move thaws its user,
+    /// except Burn Up from a user that isn't Fire type (which goes through
+    /// the freeze check).
+    fn defrosts(&self, r: MonRef, id: MoveId) -> bool {
+        let mv = self.dex.mv(id);
+        mv.has(MoveFlag::Defrost)
+            && !(self.dex.move_kind[id as usize] == MoveKind::BurnUp
+                && !self
+                    .dex
+                    .ids
+                    .types
+                    .fire
+                    .is_some_and(|f| self.has_type_of(r, f)))
+    }
+
     pub(crate) fn run_ability_modify_move(&mut self, r: MonRef, mv: &Move) {
         let kind = self.ability_kind(r);
         self.active_move.ignore_evasion = (kind == AbilityKind::KeenEye).then_some(r);

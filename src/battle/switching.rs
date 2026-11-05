@@ -317,6 +317,10 @@ impl Battle {
             // (Champions: timesAttacked too): a revived Pokémon hit on the
             // turn it fainted keeps those only when it comes in plainly.
             m.vol = vol;
+            // knownType and apparentType are the Pokémon's own, not
+            // volatiles: the newcomer's clearVolatile makes its types known.
+            m.vol.type_unknown = false;
+            m.vol.apparent_types = None;
             m.boosts = boosts;
             m.times_attacked = 0;
             m.attacked_by.clear();

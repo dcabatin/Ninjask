@@ -51,6 +51,7 @@ GAMES = [
     (9, 3418),  # an ignored White Herb still sorts
     (13, 1171),  # Future Sight on a revived Pokémon not yet sent in
     (13, 3209),  # TryBoost sorts once
+    (16, 33),  # Baton Pass doesn't pass on unknown types
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -67,6 +68,9 @@ MIXED = [
     (11, 3136, "mixed"),  # tryTrap's Immunity sort, Magnet Rise and Dive
     (11, 3793, "mixed"),  # no status for a Future Sight user off the field
     (12, 1774, "wide"),  # a partial trap remembers its user off the field
+    (14, 877, "mixed"),  # the ??? type never gets STAB (Struggle after Burn Up)
+    (14, 3733, "mixed"),  # Burn Up from a non-Fire user doesn't thaw it
+    (15, 774, "wide"),  # Seed Sower's terrain mid-residual keeps its 5 turns
 ]
 
 

@@ -1180,7 +1180,9 @@ impl Battle {
 
     /// `ModifySTAB`: Adaptability.
     pub(crate) fn stab_modifier(&self, src: MonRef, move_type: TypeId) -> Option<(u32, u32)> {
-        if !self.has_type_of(src, move_type) {
+        // "The ??? type never gets STAB": Struggle from a user Burn Up left
+        // `???`.
+        if Some(move_type) == self.dex.ids.types.typeless || !self.has_type_of(src, move_type) {
             return None;
         }
         if self.has_ability(src, AbilityKind::Adaptability) {

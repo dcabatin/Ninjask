@@ -27,7 +27,9 @@ pub(crate) enum HandlerKind {
     Status(MonRef, Status),
     SideCondition(usize, SideCond),
     TrickRoom,
-    Terrain,
+    /// The terrain when the handlers were collected, and its duration then:
+    /// the handler holds that terrain's own state.
+    Terrain(Terrain, u8),
     /// A volatile with only a duration: one handler each, as in Showdown,
     /// so that equal ones tie (and are shuffled) the same way.
     Volatile(MonRef, DurationVolatile),
@@ -501,7 +503,7 @@ impl Battle {
         }
         if let Some(t) = self.field.terrain {
             handlers.push(Handler {
-                kind: HandlerKind::Terrain,
+                kind: HandlerKind::Terrain(t, self.field.terrain_turns),
                 order: order(self, t.id(), "onFieldResidualOrder", 27),
                 speed: 0,
                 sub_order: self.cond_u32(t.id(), "onFieldResidualSubOrder", 7),
@@ -669,8 +671,20 @@ impl Battle {
                 }
                 self.field.trick_room == 0
             }
-            HandlerKind::Terrain => {
-                if self.field.terrain.is_none() || self.field.terrain_turns == 0 {
+            HandlerKind::Terrain(t, turns) => {
+                // A terrain set earlier in the residuals (Seed Sower on a
+                // Future Sight hit) has a new state: Showdown counts down the
+                // collected terrain's own (old) state, then skips the
+                // handler; an old state running out still calls
+                // clearTerrain, which ends the new terrain.
+                if self.field.terrain != Some(t) {
+                    if turns == 1 && self.field.terrain.is_some() {
+                        self.clear_terrain();
+                        return Some(true);
+                    }
+                    return None;
+                }
+                if self.field.terrain_turns == 0 {
                     return None;
                 }
                 self.field.terrain_turns -= 1;

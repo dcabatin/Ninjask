@@ -175,6 +175,12 @@ the new `_core.abi3.so`.
     Slowbronite): most stones' onTakeItem goes by the base species' own
     base species. Found by parity on the 418-team coverage pool of
     just_a_simulator.
+  - The `???` type never gets STAB (Struggle from a Pokémon Burn Up left
+    `???`); Burn Up from a frozen user that isn't Fire type goes through
+    the freeze check instead of thawing it; a terrain set during the
+    residuals (Seed Sower hit by Future Sight) keeps its full duration,
+    the old terrain's countdown ticking instead; Baton Pass doesn't pass on
+    unknown types.
 
 ### Changed
 
