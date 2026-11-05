@@ -52,6 +52,9 @@ GAMES = [
 MIXED = [
     (6, 196, "mixed"),  # Ally Switch: AfterMoveSecondary follows the user
     (7, 3783, "wide"),  # Magic Bounce from a holder mid-Dive
+    (8, 939, "mixed"),  # Sheer Force lost to Wandering Spirit: Life Orb recoil
+    (8, 2608, "mixed"),  # Flower Veil announces Octolock's drop
+    (8, 3306, "mixed"),  # TryHitSide sorts Sap Sipper and Soundproof
 ]
 
 

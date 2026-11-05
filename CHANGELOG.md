@@ -147,6 +147,13 @@ the new `_core.abi3.so`.
     used it, in its new slot (it ran an ally's Berserk).
   - Magic Bounce bounces a side move (Spikes) even while its holder is
     mid-Dive: `onAllyTryHitSide` checks the move's first target.
+  - Life Orb's recoil follows a Sheer Force move whose user lost Sheer
+    Force during it (Wandering Spirit): `suppressingSecondaries()` checks
+    the ability, not only the move.
+  - Flower Veil (unlike Clear Body) still announces Octolock's drop.
+  - Every side move runs TryHitSide's sort over its side's Magic Bounce,
+    Sap Sipper and Soundproof holders; Sap Sipper drinks a Grass move
+    aimed at its side, and Soundproof announces a sound one.
 
 ### Changed
 

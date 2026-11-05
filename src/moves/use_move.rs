@@ -1056,43 +1056,86 @@ impl Battle {
             mv.target,
             Target::All | Target::AllySide | Target::FoeSide | Target::AllyTeam
         ) {
-            // TryHitSide: Magic Bounce on the target side (`onAllyTryHitSide`;
-            // its holders sort by Speed stat) sends a reflectable move back.
-            if !bounced && mv.target == Target::FoeSide && mv.has(MoveFlag::Reflectable) {
+            // TryHitSide on the move's first target (the first active
+            // Pokémon of the side it aims at): the `onAllyTryHitSide`
+            // handlers of that side, sorted by plain Speed stat
+            // (`getStat('spe', true, true)`). Magic Bounce sends a reflectable
+            // foe-side move back (stopping the event); Sap Sipper drinks a
+            // Grass move aimed at its own side; Soundproof announces a sound
+            // move. A suppressed handler still sorts.
+            if matches!(
+                mv.target,
+                Target::FoeSide | Target::AllySide | Target::AllyTeam
+            ) {
                 use crate::abilities::{compare_mod, ModHandler};
-                let side = 1 - r.0;
-                let mut holders: Small<(MonRef, ModHandler)> = (0..self.sides[side].n_active)
+                #[derive(Clone, Copy)]
+                enum A {
+                    MagicBounce,
+                    SapSipper,
+                    Soundproof,
+                }
+                let side = if mv.target == Target::FoeSide {
+                    1 - r.0
+                } else {
+                    r.0
+                };
+                let mut holders: Small<(MonRef, A, ModHandler)> = (0..self.sides[side].n_active)
                     .filter_map(|sl| self.active(side, sl))
                     .filter(|&h| self.mon(h).hp > 0 && !self.mon(h).fainted)
-                    .filter(|&h| self.raw_ability_kind(h) == crate::kinds::AbilityKind::MagicBounce)
-                    // Showdown sorts these by the plain Speed stat
-                    // (`getStat('spe', true, true)`), not the current speed.
-                    .map(|h| {
-                        (
+                    .filter_map(|h| {
+                        let k = match self.dex.ability(self.mon(h).ability).id.as_str() {
+                            "magicbounce" => A::MagicBounce,
+                            "sapsipper" => A::SapSipper,
+                            "soundproof" => A::Soundproof,
+                            _ => return None,
+                        };
+                        Some((
                             h,
+                            k,
                             ModHandler::new(0, self.mon(h).stats[Stat::Spe as usize] as i32, 7),
-                        )
+                        ))
                     })
                     .collect();
                 if holders.len() > 1 {
-                    self.speed_sort_by(&mut holders, |a, b| compare_mod(&a.1, &b.1));
+                    self.speed_sort_by(&mut holders, |a, b| compare_mod(&a.2, &b.2));
                 }
-                // The first holder whose ability works (not suppressed by Mold
-                // Breaker) bounces it, unless the event's target is
-                // semi-invulnerable: `onAllyTryHitSide`'s `target` is the
-                // move's first target (the side's first active Pokémon), not
-                // the holder, so a holder mid-Dive still bounces it.
+                // `target.isSemiInvulnerable()` reads the event's target, not
+                // the holder: a holder mid-Dive still bounces.
                 let first = (0..self.sides[side].n_active).find_map(|sl| self.active(side, sl));
                 let hidden = first.is_some_and(|f| self.semi_invulnerable(f));
-                let bouncer = holders.iter().find(|(h, _)| {
-                    !hidden
-                        && !self.ability_suppressed(*h)
-                        && !self.ignoring_ability(*h)
-                        && !self.mon(*h).revived
-                });
-                if let Some(&(h, _)) = bouncer {
-                    self.bounce_move(r, h, move_id);
-                    return Some(false);
+                let works = |b: &Battle, h: MonRef| {
+                    !b.ability_suppressed(h) && !b.ignoring_ability(h) && !b.mon(h).revived
+                };
+                for &(h, k, _) in holders.iter() {
+                    if !works(self, h) {
+                        continue;
+                    }
+                    match k {
+                        A::MagicBounce
+                            if !bounced
+                                && side != r.0
+                                && mv.has(MoveFlag::Reflectable)
+                                && !hidden =>
+                        {
+                            self.bounce_move(r, h, move_id);
+                            return Some(false);
+                        }
+                        A::SapSipper
+                            if h != r
+                                && side == r.0
+                                && move_type == self.dex.type_id("Grass").unwrap_or(NO_TYPE) =>
+                        {
+                            let mut b = [0i8; 7];
+                            b[Boost::Atk as usize] = 1;
+                            let a = self.mon(h).ability;
+                            self.boost(h, &b, None, EffectRef::Ability(a), false, false);
+                        }
+                        A::Soundproof if mv.has(MoveFlag::Sound) => {
+                            let hi = self.ident(h);
+                            log_line!(self, "|-immune|{hi}|[from] ability: Soundproof");
+                        }
+                        _ => {}
+                    }
                 }
             }
             let applied = match kind {
@@ -1434,8 +1477,10 @@ impl Battle {
             let effect = self.move_ref(mv);
             self.boost_listed(r, &b, Some(r), effect, false, true);
         }
-        // AfterMoveSecondarySelf, unless Sheer Force dropped the secondaries.
-        if !mv.sheer_force {
+        // AfterMoveSecondarySelf, unless Sheer Force dropped the secondaries
+        // (`suppressingSecondaries()`: the user must still have Sheer Force,
+        // which Wandering Spirit or Mummy may have taken by now).
+        if !(mv.sheer_force && self.has_ability(r, crate::kinds::AbilityKind::SheerForce)) {
             // The event's target: the last of the move's targets, as chosen
             // (useMoveInner's `target`), hit or not.
             let last_target = last;

@@ -395,10 +395,12 @@ impl Battle {
     ) {
         let ident = self.ident(t);
         let by_other = source != Some(t);
-        // No message for a move's secondary effect, nor for Octolock's
-        // residual drop (Clear Body, White Smoke, Full Metal Body).
-        let quiet = self.effect_has_secondaries(effect)
-            || matches!(effect, EffectRef::Move(m) if self.dex.mv(m).id == "octolock");
+        // No message for a move's secondary effect; Clear Body, White Smoke,
+        // Full Metal Body and Big Pecks also keep quiet for Octolock's drop
+        // (Flower Veil and the rest don't).
+        let quiet = self.effect_has_secondaries(effect);
+        let quiet_octolock =
+            quiet || matches!(effect, EffectRef::Move(m) if self.dex.mv(m).id == "octolock");
         let dex = self.dex.clone();
         let name = dex.ability(self.mon(t).ability).name.as_str();
         match self.ability_kind(t) {
@@ -410,7 +412,7 @@ impl Battle {
                         blocked = true;
                     }
                 }
-                if blocked && !quiet {
+                if blocked && !quiet_octolock {
                     log_line!(
                         self,
                         "|-fail|{ident}|unboost|[from] ability: {name}|[of] {ident}"
@@ -430,7 +432,7 @@ impl Battle {
                 }
             }
             AbilityKind::BigPecks | AbilityKind::KeenEye if by_other => {
-                self.run_try_boost(t, b, present, effect, quiet)
+                self.run_try_boost(t, b, present, effect, quiet_octolock)
             }
             AbilityKind::IntimidateImmune => {
                 let i = Boost::Atk as usize;
