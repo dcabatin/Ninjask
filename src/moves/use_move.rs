@@ -240,12 +240,14 @@ impl Battle {
         m.last_move_target_loc = target_loc;
         m.moved_this_turn = true;
         let result = self.use_move(r, move_id, target, target_loc, locked, self_target);
-        let r = self.relocated_mon(r);
+        let moved = self.relocated_mon(r);
+        let target = target.map(|t| if t == r { moved } else { t });
+        let r = moved;
         // A called move (Copycat, Sleep Talk) is the active move from here
         // on, and its result is the Pokémon's.
         let (move_id, result) = self.called_move_result(r, move_id, result);
         self.mon_mut(r).move_this_turn_result = result;
-        self.run_after_move(r, move_id);
+        self.run_after_move(r, move_id, target);
         self.faint_messages();
         self.check_win();
     }

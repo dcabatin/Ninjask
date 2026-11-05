@@ -806,7 +806,16 @@ impl Battle {
             .dex
             .type_id("Flying")
             .is_some_and(|f| self.has_type_of(tgt, f));
-        if ground && flying && self.item_kind(tgt) == Some(crate::kinds::ItemKind::IronBall) {
+        // Iron Ball's handler returns at once under Gravity, Ingrain or
+        // Smack Down: the types then count as they are (a grounded Flying
+        // type takes Ground neutrally; its other type still matters).
+        let v = &self.mon(tgt).vol;
+        let grounded_anyway = v.ingrain || v.smack_down || self.field.gravity > 0;
+        if ground
+            && flying
+            && !grounded_anyway
+            && self.item_kind(tgt) == Some(crate::kinds::ItemKind::IronBall)
+        {
             0
         } else {
             type_mod

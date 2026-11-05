@@ -642,12 +642,18 @@ impl Battle {
     /// (subOrder 2) in the order they were added, lockedmove's and Charge's;
     /// then every White Herb's onAnyAfterMove (an item, 8), the user's side
     /// first. By speed, equal ones drawn.
-    pub(crate) fn run_after_move(&mut self, r: MonRef, move_id: MoveId) {
+    /// `target` is runMove's: with neither it nor the user still active (a
+    /// Copycat that called Memento), findEventHandlers collects nothing.
+    pub(crate) fn run_after_move(&mut self, r: MonRef, move_id: MoveId, target: Option<MonRef>) {
         match self.dex.move_kind[move_id as usize] {
             MoveKind::SpitUp => self.end_stockpile(r),
             MoveKind::BeakBlast if self.mon(r).hp > 0 => self.mon_mut(r).vol.beak_blast = false,
             MoveKind::SparklingAria => self.sparkling_aria_on_after_move(r),
             _ => {}
+        }
+        let active = |b: &Battle, x: MonRef| b.mon(x).is_active && !b.mon(x).fainted;
+        if !active(self, r) && !target.is_some_and(|t| active(self, t)) {
+            return;
         }
         use crate::abilities::{compare_mod, ModHandler};
         use crate::kinds::ItemKind;

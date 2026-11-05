@@ -98,6 +98,13 @@ the new `_core.abi3.so`.
   - A Pokémon brought in by Baton Pass or Shed Tail starts with no
     record of past hits (`timesAttacked`, `attackedBy`), as
     `copyVolatileFrom`'s `clearVolatile` leaves it.
+  - The AfterMove event collects no handlers when neither the user nor
+    runMove's target is still active (a Copycat that called Memento), so
+    White Herb waits for the next move.
+  - Iron Ball's effectiveness handler returns at once under Gravity,
+    Ingrain or Smack Down, so a grounded Bug/Flying holder resists Ground.
+  - A residual ability handler suppressed by Gastro Acid still gets the
+    faint check after it (a Perish Song faint shows before `upkeep`).
 
 ### Changed
 
