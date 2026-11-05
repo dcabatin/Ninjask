@@ -743,11 +743,40 @@ impl Battle {
         // Without two handlers there is no sort, so no draw: count, as an
         // upper bound, the effects below with a handler for the event in
         // any role.
-        if extra.len() + self.event_handler_bound(event, target, source) < 2 {
+        let immunity_vols = if event == Event::Immunity {
+            let v = &self.mon(target).vol;
+            usize::from(v.magnet_rise > 0)
+                + usize::from(
+                    v.charging
+                        .is_some_and(|c| matches!(self.dex.mv(c).id.as_str(), "dive" | "dig")),
+                )
+        } else {
+            0
+        };
+        if extra.len() + immunity_vols + self.event_handler_bound(event, target, source) < 2 {
             return;
         }
         let mut hs: ArrayVec<ModHandler, MAX_SORTED_HANDLERS> = ArrayVec::new();
         hs.extend(extra.iter().copied());
+        // Immunity: the target's volatiles with an onImmunity handler (Magnet
+        // Rise, and Dig or Dive while charging), in the order they were added.
+        if event == Event::Immunity {
+            let m = self.mon(target);
+            let v = &m.vol;
+            let mut vols: ArrayVec<u32, 2> = ArrayVec::new();
+            if v.magnet_rise > 0 {
+                vols.push(v.added[crate::state::ResidualVol::MagnetRise as usize]);
+            }
+            if v.charging
+                .is_some_and(|c| matches!(self.dex.mv(c).id.as_str(), "dive" | "dig"))
+            {
+                vols.push(v.added[crate::state::ResidualVol::Charging as usize]);
+            }
+            vols.sort_unstable();
+            for _ in vols {
+                hs.push(ModHandler::new(0, m.speed, 2));
+            }
+        }
         self.push_event_handlers(&mut hs, event, Role::Own, target);
         if let Some(src) = source {
             self.push_event_handlers(&mut hs, event, Role::Source, src);

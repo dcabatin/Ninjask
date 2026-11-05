@@ -665,6 +665,21 @@ impl Battle {
                 let sub = subbed.contains(&t);
                 // ModifySecondaries (Shield Dust) filters before any roll; a
                 // substitute made the target null, so its handlers don't run.
+                // Its sort: the target's Shield Dust and the user's Parental
+                // Bond (`onSourceModifySecondaries`), equal ones drawn.
+                if !sub && (!mv.secondaries.is_empty() || kings_rock) {
+                    use crate::abilities::{compare_mod, ModHandler};
+                    let mut hs: Small<ModHandler> = Small::new();
+                    if self.raw_ability_kind(t) == AbilityKind::ShieldDust {
+                        hs.push(ModHandler::new(0, self.mon(t).speed, 7));
+                    }
+                    if self.raw_ability_kind(r) == AbilityKind::ParentalBond {
+                        hs.push(ModHandler::new(0, self.mon(r).speed, 7));
+                    }
+                    if hs.len() > 1 {
+                        self.speed_sort_by(&mut hs, compare_mod);
+                    }
+                }
                 let shielded = !sub && self.shield_dust_on_modify_secondaries(t);
                 for sec in mv
                     .secondaries

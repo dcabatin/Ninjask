@@ -161,6 +161,16 @@ the new `_core.abi3.so`.
   - TryBoost's handlers (the target's own ability and each Flower Veil on
     its side) run in speed order: a faster ally's Flower Veil blocks a
     drop before Mirror Armor reflects it.
+  - Life Orb, Expert Belt and resist berries join the ModifyDamage sort
+    while ignored; Overcoat defers to a Grass type's own powder immunity.
+  - Future Sight on a revived Pokémon not yet sent in calculates its
+    damage and fails; a partial trap remembers its user while that user
+    is off the field; a Pokémon off the field takes no status (Spicy Spray
+    on a Future Sight user).
+  - An ally's Pollen Puff rolls Stench's flinch secondary like King's
+    Rock's; the ModifySecondaries sort (Shield Dust, Parental Bond) and
+    each tryTrap's Immunity sort are drawn, with Magnet Rise, Dig and Dive
+    among the Immunity handlers.
 
 ### Changed
 

@@ -49,6 +49,8 @@ GAMES = [
     (4, 1935),  # Cud Chew under Magic Room
     (9, 3075),  # Simple Beam breaks Illusion
     (9, 3418),  # an ignored White Herb still sorts
+    (13, 1171),  # Future Sight on a revived Pokémon not yet sent in
+    (13, 3209),  # TryBoost sorts once
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -58,6 +60,13 @@ MIXED = [
     (8, 2608, "mixed"),  # Flower Veil announces Octolock's drop
     (8, 3306, "mixed"),  # TryHitSide sorts Sap Sipper and Soundproof
     (10, 1620, "wide"),  # Flower Veil before a slower Mirror Armor
+    (11, 476, "mixed"),  # ModifyDamage sorts ignored items
+    (11, 767, "mixed"),  # Stench's flinch roll on an ally Pollen Puff
+    (11, 1126, "mixed"),  # Overcoat defers to a Grass type's powder immunity
+    (11, 1628, "mixed"),  # ModifySecondaries: Shield Dust and Parental Bond
+    (11, 3136, "mixed"),  # tryTrap's Immunity sort, Magnet Rise and Dive
+    (11, 3793, "mixed"),  # no status for a Future Sight user off the field
+    (12, 1774, "wide"),  # a partial trap remembers its user off the field
 ]
 
 

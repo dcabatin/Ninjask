@@ -796,8 +796,15 @@ impl Battle {
                 }
                 if self.heal(t, amount, "") == 0 {
                     self.note_not_fail(t);
-                } else if self.kings_rock_flinch(r, mv) && self.rng.random(100) < 10 {
-                    // King's Rock's secondary rolls for a target that was healed.
+                } else if (self.kings_rock_flinch(r, mv)
+                    || mv
+                        .secondaries
+                        .iter()
+                        .any(|s| s.volatile.as_deref() == Some("flinch")))
+                    && self.rng.random(100) < 10
+                {
+                    // King's Rock's or Stench's secondary rolls for a target
+                    // that was healed.
                     self.add_volatile(t, "flinch", false);
                 }
                 true
