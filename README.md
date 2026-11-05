@@ -250,13 +250,14 @@ Contributions are welcome, and the most valuable ones are concrete:
 
 ### How parity is verified
 
-Showdown at the pinned commit is the specification. Four checks compare the
+Showdown at the pinned commit is the specification. Five checks compare the
 engine with it; all need Node.js and the Showdown checkout (see
 [Working from source](#working-from-source)).
 
 | Check | What it compares |
 | --- | --- |
 | `scripts/check_reference.py` | Reference mode against Showdown, game by game. Both simulators get the same seed and the same choices. After every input it compares each log line, each side's request and the full state projection, the RNG state included. On a divergence it prints both sequences of RNG draws with their call sites. |
+| `scripts/check_chaos.py` | The same comparison on "chaos" teams: every Pokémon carries the mechanics that interact the most (Illusion, Imposter, Transform, Skill Swap, Reflect Type, Perish Song, Future Sight, Instruct, Baton Pass, Revival Blessing...), so interactions that real play reaches once in a million games come up every few dozen. `--mix wide` and `--mix mixed` draw from everything supported. Each bug it has found is replayed in `tests/python/test_chaos.py`. |
 | `cargo run --release --example fingerprint` | A hash of the logs, requests and RNG draws of 2000 seeded engine games. It must not change in a refactor that preserves behaviour. |
 | `scripts/verify_engine.py` | Outcome distributions. At sampled decision points the Showdown state is imported into the engine and one joint choice is played N times in each simulator. A χ² test of homogeneity per feature (HP, status, boosts, volatiles, fainting, field, the winner) plus an exact-support check, with false-discovery-rate control across all comparisons. `--focus ids` concentrates on named moves, abilities and items. |
 | `scripts/check_tracker.py` | The protocol tracker (below) against the true state: a player's view of its own side matches exactly, and everything it believes about the foe is true. It runs on engine games, on Showdown games (`--showdown`) and with open team sheets (`--ots`). |
