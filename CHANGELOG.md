@@ -48,6 +48,10 @@ the new `_core.abi3.so`.
     `for_each_player_choice`. About 700 random games/s with every decision
     observed on one core of a 4-vCPU VM, and 1,300 on four; a loop through
     the JSON requests plays about 45.
+- `scripts/check_chaos.py`: games between teams made of the strangest
+  supported mechanics (Illusion, Imposter, Transform, Reflect Type, Perish
+  Song, Future Sight, Instruct, Skill Swap and the like), compared with
+  Showdown after every input. It found the fixes under Fixed below.
 - `research/`: what trading parity for speed would buy (about 1.2 times
   in the engine, for real changes to play) and how much engine speed
   matters in training. The research-only switches behind it

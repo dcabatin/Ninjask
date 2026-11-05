@@ -680,3 +680,30 @@ ITEM_START_CASES = {
 def test_item_start_on_a_holder_that_ignores_its_item_matches_showdown(case, capsys):
     t1, t2, script = ITEM_START_CASES[case]
     _play_scripted(range(4), "items", t1, t2, script, capsys)
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_reflect_type_under_illusion_keeps_the_disguise_types_like_showdown(seed, capsys):
+    """A disguised Zoroark that Reflect Types a foe: Showdown's end-of-turn
+    type catch-up looks at `pokemon.illusion || pokemon`, the teammate it
+    appears as, so nothing is shown while the disguise holds; once a hit
+    breaks it, the Zoroark's real (copied) types are shown at the next one."""
+    t1 = _team(
+        _packed("Vivillon", "", "compoundeyes", ["CalmMind", "StruggleBug"], "Timid"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+    )
+    t2 = _team(
+        _packed("Zoroark-Hisui", "", "illusion", ["ReflectType", "CalmMind"], "Bold"),
+        _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+        _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+        _packed("Wyrdeer", "", "intimidate", ["CalmMind"], "Calm"),
+    )
+    script = ["team 1234", "team 1234", "move 1, move 1", "move 1 1, move 1", "move 2, move 1", "move 2, move 1",
+              "move 1, move 1", "move 2, move 1"]
+    log = _play_scripted([seed], "illusion", t1, t2, script, capsys)[0]
+    assert any("|-start|p2a: Wyrdeer|typechange|[from] move: Reflect Type" in line for line in log)
+    broken = next(i for i, line in enumerate(log) if line.startswith("|-end|p2a: Zoroark|Illusion"))
+    assert not any("typechange|Bug/Flying|[silent]" in line for line in log[:broken])
+    assert any(line == "|-start|p2a: Zoroark|typechange|Bug/Flying|[silent]" for line in log[broken:])
