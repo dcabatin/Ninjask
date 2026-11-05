@@ -181,6 +181,10 @@ the new `_core.abi3.so`.
     residuals (Seed Sower hit by Future Sight) keeps its full duration,
     the old terrain's countdown ticking instead; Baton Pass doesn't pass on
     unknown types.
+  - Stench's flinch on a move with its own secondary handler (Syrup Bomb,
+    Throat Chop...) is applied, not handed to that handler; a damaging
+    move aimed at its own user (a locked Thrash with no foe in range)
+    checks the user's type immunity.
 
 ### Changed
 

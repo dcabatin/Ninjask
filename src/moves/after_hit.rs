@@ -355,8 +355,9 @@ impl Battle {
         t: MonRef,
         sec: &Secondary,
         effect: EffectRef,
+        own: bool,
     ) {
-        if let EffectRef::Move(m) = effect {
+        if let (true, EffectRef::Move(m)) = (own, effect) {
             if self.secondary_on_hit(src, t, m) || self.volatile_secondary_on_hit(src, t, m) {
                 return;
             }

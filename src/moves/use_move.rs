@@ -1283,8 +1283,10 @@ impl Battle {
         if checks_immunity {
             let mut next = ActiveList::new();
             for &t in &live {
-                // A smart-targeting move's immunity goes unannounced.
-                if t != r && !self.run_immunity(t, move_type, !smart) {
+                // A smart-targeting move's immunity goes unannounced. The
+                // user isn't exempt: a locked Thrash aimed back at its Ghost
+                // user (no foe left in range) has no effect.
+                if !self.run_immunity(t, move_type, !smart) {
                     failed = true;
                     continue;
                 }

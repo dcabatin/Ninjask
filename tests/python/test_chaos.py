@@ -52,6 +52,7 @@ GAMES = [
     (13, 1171),  # Future Sight on a revived Pokémon not yet sent in
     (13, 3209),  # TryBoost sorts once
     (16, 33),  # Baton Pass doesn't pass on unknown types
+    (19, 3654),  # type immunity for a locked Thrash aimed at its own user
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -71,6 +72,7 @@ MIXED = [
     (14, 877, "mixed"),  # the ??? type never gets STAB (Struggle after Burn Up)
     (14, 3733, "mixed"),  # Burn Up from a non-Fire user doesn't thaw it
     (15, 774, "wide"),  # Seed Sower's terrain mid-residual keeps its 5 turns
+    (17, 2999, "mixed"),  # Stench's flinch on Syrup Bomb, past the move's own handler
 ]
 
 

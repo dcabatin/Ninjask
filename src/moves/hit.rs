@@ -681,15 +681,20 @@ impl Battle {
                     }
                 }
                 let shielded = !sub && self.shield_dust_on_modify_secondaries(t);
-                for sec in mv
+                // The move's own secondaries come first; Stench appends its
+                // flinch, which the move's own handlers (Syrup Bomb's...)
+                // don't touch.
+                let own = self.dex.mv(mv.idx).secondaries.len();
+                for (i, sec) in mv
                     .secondaries
                     .iter()
-                    .filter(|s| !shielded || s.self_boosts.is_some())
+                    .enumerate()
+                    .filter(|(_, s)| !shielded || s.self_boosts.is_some())
                 {
                     let roll = self.rng.random(100);
                     if sec.chance.map(|c| roll < c as u32).unwrap_or(true) {
                         if !sub {
-                            self.apply_secondary(r, t, sec, effect);
+                            self.apply_secondary(r, t, sec, effect, i < own);
                         } else if let Some(b) = sec.self_boosts {
                             self.boost_listed(r, &b, Some(r), effect, true, true);
                         }
