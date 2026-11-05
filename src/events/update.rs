@@ -70,7 +70,9 @@ impl Battle {
     /// the field.
     pub(crate) fn syrup_bomb_on_update(&mut self, r: MonRef) {
         if let Some(src) = self.mon(r).vol.syrup_bomb {
-            if !self.mon(src).is_active || self.mon(src).fainted {
+            // removeVolatile does nothing without HP (the holder fell to
+            // recoil as its thrower fainted).
+            if self.mon(r).hp > 0 && (!self.mon(src).is_active || self.mon(src).fainted) {
                 let v = &mut self.mon_mut(r).vol;
                 v.syrup_bomb = None;
                 v.syrup_bomb_duration = 0;

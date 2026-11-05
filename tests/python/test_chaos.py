@@ -86,6 +86,9 @@ MIXED = [
     (24, 3874, "wide"),  # Heal Bell and a fainted Good as Gold ally
     (26, 3998, "mixed"),  # Bind ends when its user is revived but not sent in
     (30, 3738, "wide"),  # Teatime's forced eat skips Ripen's TryEatItem
+    (32, 2911, "mixed"),  # Symbiosis handlers collected in slot order
+    (33, 1967, "wide"),  # Syrup Bomb stays on a holder with no HP
+    (33, 2886, "wide"),  # Sheer Cold through No Guard on a Pokémon mid-Fly
 ]
 
 

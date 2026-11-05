@@ -212,6 +212,11 @@ the new `_core.abi3.so`.
     item handler belongs to the item it was collected for, so Symbiosis
     mid-switch-in skips the new holder's and still announces a given-away
     Air Balloon for its old holder.
+  - Symbiosis handlers are collected in slot order (`alliesAndSelf`),
+    which decides speed ties; Syrup Bomb stays on a holder with no HP
+    (removeVolatile needs HP); a one-hit KO move on a semi-invulnerable
+    target (No Guard) skips the level and Ice checks and keeps its own
+    accuracy.
 
 ### Changed
 

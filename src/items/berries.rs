@@ -329,8 +329,11 @@ impl Battle {
         if self.raw_ability_kind(r) == AbilityKind::Unburden {
             hs.push((None, ModHandler::new(0, self.mon(r).speed, 7)));
         }
-        let mut side: Small<MonRef> = smallvec::smallvec![r];
-        side.extend(self.allies_of(r));
+        // `alliesAndSelf`: the side's slots in order (the order speed ties
+        // are shuffled from), not the user first.
+        let side: Small<MonRef> = (0..self.sides[r.0].n_active)
+            .filter_map(|sl| self.active(r.0, sl))
+            .collect();
         for h in side {
             if self.raw_ability_kind(h) == AbilityKind::Symbiosis
                 && self.mon(h).hp > 0

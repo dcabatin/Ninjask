@@ -241,6 +241,11 @@ impl Battle {
         // A one-hit KO skips ModifyAccuracy and the stages: 30, or 20 for
         // Sheer Cold from a non-Ice user, plus the level difference.
         if let Some(immune_type) = mv.ohko {
+            // Against a semi-invulnerable target (reached through No Guard)
+            // Showdown skips that block: the move's own accuracy.
+            if self.semi_invulnerable(t) {
+                return acc.map_or(Accuracy::Sure, Accuracy::Fixed);
+            }
             let base = match immune_type {
                 Some(ty) if !self.has_type_of(r, ty) => 20,
                 _ => 30,

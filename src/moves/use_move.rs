@@ -1321,8 +1321,10 @@ impl Battle {
         let mut next = ActiveList::new();
         for &t in &live {
             self.active_move.active_target = Some(t);
-            // A one-hit KO can't hit a higher level or (Sheer Cold) an Ice type.
-            if let Some(immune_type) = mv.ohko {
+            // A one-hit KO can't hit a higher level or (Sheer Cold) an Ice
+            // type, unless the target is semi-invulnerable (No Guard reaches
+            // it), where Showdown skips the check.
+            if let Some(immune_type) = mv.ohko.filter(|_| !self.semi_invulnerable(t)) {
                 let (lu, lt) = (self.mon(r).level, self.mon(t).level);
                 if lu < lt || immune_type.is_some_and(|ty| self.has_type_of(t, ty)) {
                     let ti = self.ident(t);
