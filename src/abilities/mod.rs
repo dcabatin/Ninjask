@@ -93,14 +93,15 @@ impl Battle {
     #[inline]
     pub(crate) fn ability_ignored(&self, r: MonRef) -> bool {
         let m = self.mon(r);
-        if m.revived {
-            return true;
-        }
         // Collecting a sort's handlers: Showdown collects a suppressed
         // ability's handler too (Gastro Acid, Mold Breaker, a transformed
-        // Pokémon's `notransform` ability) and skips it when it runs.
+        // Pokémon's `notransform` ability; a revived Pokémon still in its
+        // slot) and skips it when it runs.
         if self.turn_state.sorting {
             return false;
+        }
+        if m.revived {
+            return true;
         }
         // Each remaining cause needs a battle or Pokémon state that is
         // usually absent: test those before reading the ability's flags.

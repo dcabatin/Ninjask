@@ -535,11 +535,10 @@ impl Battle {
                     sub_order: 3,
                 });
             }
-            for sl in 0..self.sides[s].n_active {
-                let Some(r) = self.active(s, sl) else {
-                    continue;
-                };
-                self.mon_residual_handlers(r, &mut handlers);
+            // side.active: whoever is in the slot, fainted or revived and
+            // not yet sent back in (Revival Blessing) included.
+            for sl in 0..self.sides[s].n_active.min(self.sides[s].mons.len()) {
+                self.mon_residual_handlers((s, sl), &mut handlers);
             }
         }
         self.turn_state.sorting = false;

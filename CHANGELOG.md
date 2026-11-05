@@ -185,6 +185,10 @@ the new `_core.abi3.so`.
     Throat Chop...) is applied, not handed to that handler; a damaging
     move aimed at its own user (a locked Thrash with no foe in range)
     checks the user's type immunity.
+  - Shell Side Arm compares boosted stats without the ModifyBoost event,
+    so Unaware doesn't hide the user's boosts; the residual sort collects
+    every Pokémon in a slot, a revived one not yet sent back in included
+    (with its ability).
 
 ### Changed
 

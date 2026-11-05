@@ -574,33 +574,17 @@ impl Battle {
         mv: &Move,
     ) -> Option<Move> {
         let t = target?;
-        // Four getStat calls, each running ModifyBoost.
-        self.event_sort(Event::ModifyBoost, r, None, &[]);
-        self.event_sort(Event::ModifyBoost, r, None, &[]);
-        self.event_sort(Event::ModifyBoost, t, None, &[]);
-        self.event_sort(Event::ModifyBoost, t, None, &[]);
-        let stat = |b: &Battle, who: MonRef, st: Stat, aware: bool| {
+        // getStat(stat, false, true): boosted but unmodified, so no
+        // ModifyBoost event runs (Unaware doesn't apply).
+        let stat = |b: &Battle, who: MonRef, st: Stat| {
             let m = b.mon(who);
             // getStat(unmodified) under Wonder Room keeps the stored stat but
             // takes the boosts of the other defense.
-            let boost = if aware {
-                m.boosts[Boost::of_stat(b.wonder_room_stat(st)) as usize]
-            } else {
-                0
-            };
+            let boost = m.boosts[Boost::of_stat(b.wonder_room_stat(st)) as usize];
             crate::moves::damage::apply_boost(m.stats[st as usize] as u32, boost)
         };
-        // Unaware on the target ignores the user's stages, and on the user the target's.
-        let user_aware = !(t != r && self.unaware_on_any_modify_boost(t));
-        let target_aware = !(t != r && self.unaware_on_any_modify_boost(r));
-        let (atk, spa) = (
-            stat(self, r, Stat::Atk, user_aware),
-            stat(self, r, Stat::Spa, user_aware),
-        );
-        let (def, spd) = (
-            stat(self, t, Stat::Def, target_aware),
-            stat(self, t, Stat::Spd, target_aware),
-        );
+        let (atk, spa) = (stat(self, r, Stat::Atk), stat(self, r, Stat::Spa));
+        let (def, spd) = (stat(self, t, Stat::Def), stat(self, t, Stat::Spd));
         let level = self.mon(r).level as u32;
         let base = (2 * level / 5 + 2) * 90;
         let physical = base * atk / def / 50;

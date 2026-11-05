@@ -53,6 +53,7 @@ GAMES = [
     (13, 3209),  # TryBoost sorts once
     (16, 33),  # Baton Pass doesn't pass on unknown types
     (19, 3654),  # type immunity for a locked Thrash aimed at its own user
+    (22, 2330),  # a revived Pokémon in its slot joins the residual sort
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -73,6 +74,7 @@ MIXED = [
     (14, 3733, "mixed"),  # Burn Up from a non-Fire user doesn't thaw it
     (15, 774, "wide"),  # Seed Sower's terrain mid-residual keeps its 5 turns
     (17, 2999, "mixed"),  # Stench's flinch on Syrup Bomb, past the move's own handler
+    (21, 2117, "wide"),  # Shell Side Arm reads boosted stats without ModifyBoost (Unaware)
 ]
 
 
