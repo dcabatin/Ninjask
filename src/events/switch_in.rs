@@ -257,7 +257,8 @@ impl Battle {
 
     /// An ability's end (`onEnd`): when replaced, switched out, or fainting.
     pub(crate) fn air_lock_on_end(&mut self, r: MonRef) {
-        if self.has_ability(r, AbilityKind::SuppressWeather) {
+        // singleEvent('End') isn't suppressed: Gastro Acid doesn't stop it.
+        if self.raw_ability_kind(r) == AbilityKind::SuppressWeather {
             self.mon_mut(r).ability_state.ending = Some(true);
             self.weather_change_event();
         }

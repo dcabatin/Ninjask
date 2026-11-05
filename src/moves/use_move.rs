@@ -793,8 +793,10 @@ impl Battle {
             return Some(false);
         }
         self.smart_target = mv.smart_target;
-        self.active_move.tracks_target =
-            kind == MoveKind::SnipeShot || self.stalwart_on_modify_move(r);
+        // Stalwart's onModifyMove: `move.tracksTarget = move.target !==
+        // 'scripted'` (Counter and Mirror Coat still go where they're sent).
+        self.active_move.tracks_target = kind == MoveKind::SnipeShot
+            || (self.stalwart_on_modify_move(r) && mv.target != Target::Scripted);
         let future = kind == MoveKind::FutureSight;
         let (targets, retarget) = self.get_move_targets(r, target_type, target, move_type, future);
         if let Some(t) = retarget {
@@ -1345,9 +1347,11 @@ impl Battle {
             }
             // The hit loop's gotAttacked on every target it kept (no damage
             // number for a status move).
-            for &t in live.iter() {
-                if t != r {
-                    self.got_attacked_by_status(t, r, mv.idx);
+            if hit {
+                for t in std::mem::take(&mut self.active_move.status_reached) {
+                    if t != r {
+                        self.got_attacked_by_status(t, r, mv.idx);
+                    }
                 }
             }
             // Status moves go through the same hit loop (Champions

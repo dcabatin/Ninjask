@@ -115,6 +115,15 @@ the new `_core.abi3.so`.
     TryAddVolatile sort first, which draws when two handlers tie (two
     Sweet Veils): Protect's and Wide Guard's `stall`, Follow Me, Rage
     Powder, Perish Song and Throat Chop's secondary.
+  - A status move records `attackedBy` only on the targets it took effect
+    on past any substitute (`targetsCopy`).
+  - Stalwart doesn't make Counter, Mirror Coat, Metal Burst and Comeuppance
+    track their target (`move.target !== 'scripted'`): they still go to
+    the last attacker.
+  - A ModifyBoost event on a Pokémon that has left the field (a Future
+    Sight's user) sorts no Unaware handlers.
+  - Air Lock's and Cloud Nine's onEnd runs under Gastro Acid too (End
+    isn't suppressed).
 
 ### Changed
 

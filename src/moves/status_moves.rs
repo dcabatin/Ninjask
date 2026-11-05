@@ -254,6 +254,13 @@ impl Battle {
                 self.force_switch_target(r, t);
             }
         }
+        // A substitute's null and a failure both drop the target from
+        // targetsCopy (no gotAttacked).
+        self.active_move.status_reached = hit
+            .iter()
+            .copied()
+            .filter(|t| !blocked.contains(t))
+            .collect();
         hit
     }
 

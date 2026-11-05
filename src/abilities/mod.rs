@@ -616,6 +616,15 @@ impl Battle {
         if self.probe {
             return;
         }
+        // findEventHandlers collects a Pokémon's, its allies' and its foes'
+        // handlers only when it or the source is active: a Future Sight user
+        // that has left the field brings no ModifyBoost handlers (Unaware).
+        if event == Event::ModifyBoost {
+            let active = |b: &Battle, x: MonRef| b.mon(x).is_active && !b.mon(x).fainted;
+            if !active(self, target) && !source.is_some_and(|s| active(self, s)) {
+                return;
+            }
+        }
         // Without two handlers there is no sort, so no draw: count, as an
         // upper bound, the effects below with a handler for the event in
         // any role.

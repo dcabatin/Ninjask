@@ -54,6 +54,9 @@ pub struct ActiveMove {
     pub bypass: Vec<MonRef>,
     /// The item Fling threw, and who threw it (the `onHit` it installed).
     pub fling: Option<(ItemId, MonRef)>,
+    /// The targets a status move took effect on, past any substitute: the
+    /// hit loop's `targetsCopy`, which `gotAttacked` records.
+    pub status_reached: Vec<MonRef>,
     /// Targets the move in use last hit critically (`getMoveHitData(move).crit`).
     pub crit: Vec<MonRef>,
     /// Each target's damage from the move's last hit on it (`moveDamage`,

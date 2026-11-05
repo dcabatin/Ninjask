@@ -103,9 +103,10 @@ def chaos_team(rng: random.Random, d, spec, parts, size: int = 6) -> str | None:
         if sp == "ditto":
             ms = ["transform"]
         item = rng.choice(items + [""])
+        nature = rng.choice(NATURES)
         evs = ",".join(str(rng.choice([0, 0, 16, 32])) for _ in range(6))
         name = spec.species[sp]["name"] if sp in spec.species else sp
-        sets.append(f"{name}||{item}|{ability}|{','.join(ms)}|{rng.choice(NATURES)}|{evs}||||50|")
+        sets.append(f"{name}||{item}|{ability}|{','.join(ms)}|{nature}|{evs}||||50|")
     team = "]".join(sets)
     return None if d.team_problems(team) else team
 
