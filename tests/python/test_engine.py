@@ -526,3 +526,46 @@ def test_verification_pool_paths(tmp_path, monkeypatch):
     assert verification_teams(tmp_path) == fixture  # name order, without duplicates
     monkeypatch.setenv("NINJASK_POOL", str(tmp_path))
     assert default_pool() == tmp_path
+
+
+def _packed(species, item, ability, moves, nature="Adamant"):
+    return f"{species}||{item}|{ability}|{','.join(moves)}|{nature}||||||50|"
+
+
+def _play_scripted(seeds, salt, t1, t2, script, capsys):
+    """Each seed played against Showdown (`check_reference.play` raises on any
+    difference in logs, state or draws); the logs printed, per seed."""
+    cr = _check_reference()
+    logs = []
+    with RefSim() as sim:
+        for seed in seeds:
+            cr.play(sim, dex(cr.FORMAT), seed_from_int(seed, salt=salt), t1, t2, _ScriptedChoices(script), True)
+            logs.append([line.strip() for line in capsys.readouterr().out.splitlines()])
+    return logs
+
+
+def test_curse_chosen_before_mega_evolving_into_a_ghost_bypasses_good_as_gold(capsys):
+    """Absol chooses Curse while still Dark (the request aims it at itself)
+    and Mega Evolves into Dark/Ghost Absol-Mega-Z the same turn. Showdown's
+    queued move keeps its 'self' target, so Champions' onHit curses a
+    random foe directly: Good as Gold never sees it, and Gholdengo can be
+    the one cursed."""
+    idle = ["CalmMind"]
+    t1 = _team(
+        _packed("Absol", "absolitez", "justified", ["Curse", "CalmMind"]),
+        _packed("Pikachu", "", "static", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    t2 = _team(
+        _packed("Gholdengo", "leftovers", "goodasgold", idle),
+        _packed("Pikachu", "", "static", idle),
+        _packed("Snorlax", "", "thickfat", idle),
+        _packed("Garchomp", "", "roughskin", idle),
+    )
+    script = ["team 1234", "team 1234", "move 1 mega, move 1", "move 1, move 1"]
+    logs = _play_scripted(range(8), "curse", t1, t2, script, capsys)
+    cursed = [next(line.split("|")[2] for line in log if line.startswith("|-start|") and "|Curse|" in line) for log in logs]
+    assert "p2a: Gholdengo" in cursed, cursed
+    assert not any("Good as Gold" in line for log in logs for line in log)
+

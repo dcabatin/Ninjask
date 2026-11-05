@@ -112,7 +112,7 @@ impl Battle {
             source: source.idx,
             prankster,
         });
-        let result = self.use_move(r, id, target, loc, false);
+        let result = self.use_move(r, id, target, loc, false, false);
         self.active_move.call = outer;
         self.priority_override = saved;
         self.active_move.called = Some((id, result, self.mon(r).fainted));
@@ -226,6 +226,7 @@ impl Battle {
             slot,
             target: loc,
             id: last,
+            self_target: false,
         });
         let mut first = charge.or(before).unwrap_or(action);
         first.order = 3;

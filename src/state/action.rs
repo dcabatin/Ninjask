@@ -44,6 +44,13 @@ pub enum ActionKind {
         slot: usize,
         target: i8,
         id: MoveId,
+        /// Champions: a Curse its user chose while not a Ghost, which
+        /// `resolveAction` aimed at the user (`action.move.target = 'self'`).
+        /// The queued move keeps that target even if its user is a Ghost
+        /// by the time it moves (Absol Mega Evolving into Absol-Mega-Z the
+        /// same turn): its onHit then curses a random foe directly, past
+        /// Good as Gold. Set when the action is made, kept by re-sorts.
+        self_target: bool,
     },
     /// `mon` is the Pokémon leaving (its position is the slot), `target` the one entering.
     /// `insta`: chosen in answer to a switch request (Showdown `instaswitch`, order 3).

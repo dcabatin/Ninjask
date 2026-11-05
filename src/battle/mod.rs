@@ -759,6 +759,7 @@ impl Battle {
                 slot,
                 target,
                 id,
+                self_target,
             } => {
                 let r = (side, mon);
                 // A Round that another Round moved up carries its sourceEffect.
@@ -773,7 +774,7 @@ impl Battle {
                     // returns at once, without the end-of-action steps.
                     return false;
                 }
-                self.run_move(r, slot, target, id);
+                self.run_move(r, slot, target, id, self_target);
                 self.turn_state.round_source = false;
             }
             ActionKind::Switch {

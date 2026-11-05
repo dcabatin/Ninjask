@@ -8,7 +8,8 @@ A native interface for training (`ninjask.Batch`, player-view legal
 choices, numeric observations), experimental exact outcome enumeration
 contributed by CalebBrody (dcabatin/Ninjask#8), and `research/` on what
 trading parity for speed would buy. Every seeded game gives the same logs,
-requests and draws as 0.3.0; the fingerprint is still `6e2f85907f97e4e9`.
+requests and draws as 0.3.0 except where the two fixes below apply; the
+fingerprint is still `6e2f85907f97e4e9`.
 
 Upgrading an editable checkout from before 0.3.0: delete
 `python/ninjask/_core.cpython-*.so`, or Python keeps loading it instead of
@@ -51,6 +52,14 @@ the new `_core.abi3.so`.
   in the engine, for real changes to play) and how much engine speed
   matters in training. The research-only switches behind it
   (`ninjask::approx`, feature `approx`) are off in every release.
+
+### Fixed
+
+- A Curse chosen before its user becomes a Ghost the same turn (Absol
+  Mega Evolving into Absol-Mega-Z) keeps the user as its target, as in
+  Showdown, whose queued move keeps the target it was resolved with: its
+  onHit then curses a random foe directly, so Good as Gold doesn't stop
+  it. The engine aimed it at a foe instead, which Good as Gold blocked.
 
 ### Changed
 

@@ -72,7 +72,7 @@ impl Battle {
         self.bounce = Some(priority);
         self.priority_override = Some((holder, move_id, priority));
         let loc = self.loc_of(holder, src);
-        let result = self.use_move(holder, move_id, Some(src), loc, false);
+        let result = self.use_move(holder, move_id, Some(src), loc, false, false);
         self.priority_override = None;
         self.mon_mut(holder).move_this_turn_result = result;
     }

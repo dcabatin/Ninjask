@@ -184,6 +184,7 @@ impl Battle {
                                         slot: ms,
                                         target,
                                         id,
+                                        self_target: false,
                                     };
                                     new_actions.push(self.resolve_chosen_action(kind));
                                 }
@@ -262,6 +263,7 @@ impl Battle {
                 slot,
                 target,
                 id,
+                self_target,
             } => {
                 let r = (side, mon);
                 // resolveAction's runEvent('FractionalPriority') comes first.
@@ -286,6 +288,7 @@ impl Battle {
                                 slot,
                                 target: self.loc_of(r, t),
                                 id,
+                                self_target,
                             };
                         }
                     }
@@ -301,20 +304,32 @@ impl Battle {
                     let mv = dex.mv(id);
                     let mut loc = target;
                     // resolveAction's `action.move` (Champions: Curse from a
-                    // non-Ghost targets the user).
-                    let tt = self.move_target_at_choice(r, mv);
+                    // non-Ghost targets the user). A re-sort only runs
+                    // getActionSpeed, on the move as resolveAction left it.
+                    let self_target = if note_target {
+                        self.move_target_at_choice(r, mv) == Target::SelfTarget
+                            && mv.target != Target::SelfTarget
+                    } else {
+                        self_target
+                    };
+                    let tt = if self_target {
+                        Target::SelfTarget
+                    } else {
+                        mv.target
+                    };
                     if loc == 0 {
                         if let Some(t) = self.get_random_target(r, tt) {
                             loc = self.loc_of(r, t);
                         }
-                        kind = ActionKind::Move {
-                            side,
-                            mon,
-                            slot,
-                            target: loc,
-                            id,
-                        };
                     }
+                    kind = ActionKind::Move {
+                        side,
+                        mon,
+                        slot,
+                        target: loc,
+                        id,
+                        self_target,
+                    };
                     if note_target {
                         self.note_original_target(r, loc);
                     }
@@ -615,6 +630,7 @@ impl Battle {
                 slot,
                 target,
                 id: mv.idx,
+                self_target: false,
             },
             Some(frac),
             Resolution::New,

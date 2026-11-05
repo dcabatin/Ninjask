@@ -154,7 +154,16 @@ impl Battle {
 
     /// Showdown `runMove`: before-move checks, PP, then `useMove`. `slot` is
     /// a move slot, `STRUGGLE` or `RECHARGE`. Records `moveThisTurnResult`.
-    pub(crate) fn run_move(&mut self, r: MonRef, slot: usize, target_loc: i8, id: MoveId) {
+    /// `self_target`: the queued action's move targets the user
+    /// (`ActionKind::Move::self_target`).
+    pub(crate) fn run_move(
+        &mut self,
+        r: MonRef,
+        slot: usize,
+        target_loc: i8,
+        id: MoveId,
+        self_target: bool,
+    ) {
         self.mon_mut(r).active_move_actions += 1;
         let move_id = match slot {
             RECHARGE => None,
@@ -171,6 +180,7 @@ impl Battle {
             (_, Some(t)) => Some(t),
             (Some(id), None) => {
                 let (tt, smart) = (self.dex.mv(id).target, self.dex.mv(id).smart_target);
+                let tt = if self_target { Target::SelfTarget } else { tt };
                 let future = self.dex.mv(id).has(MoveFlag::FutureMove);
                 self.get_target(r, tt, target_loc, smart, future)
             }
@@ -225,7 +235,7 @@ impl Battle {
         m.last_move = Some(move_id);
         m.last_move_target_loc = target_loc;
         m.moved_this_turn = true;
-        let result = self.use_move(r, move_id, target, target_loc, locked);
+        let result = self.use_move(r, move_id, target, target_loc, locked, self_target);
         let r = self.relocated_mon(r);
         // A called move (Copycat, Sleep Talk) is the active move from here
         // on, and its result is the Pokémon's.
@@ -555,6 +565,7 @@ impl Battle {
         target: Option<MonRef>,
         target_loc: i8,
         locked: bool,
+        self_target: bool,
     ) -> Option<bool> {
         // A move Magic Bounce sent back (`move.hasBounced`): no PP, no Choice
         // lock, and it can't be bounced again.
@@ -570,6 +581,18 @@ impl Battle {
         let dex = self.dex.clone();
         let mv = dex.mv(move_id);
         let kind = dex.move_kind[move_id as usize];
+        // The queued action's move, as resolveAction left it: a Curse aimed
+        // at its user (`self_target`) keeps that target type.
+        let self_aimed;
+        let mv = if self_target {
+            self_aimed = crate::dex::Move {
+                target: Target::SelfTarget,
+                ..mv.clone()
+            };
+            &self_aimed
+        } else {
+            mv
+        };
         // Beat Up's ModifyMove; a Round moved up by another Round (the
         // action's sourceEffect, replaced by a locked move's).
         let beat_up;
