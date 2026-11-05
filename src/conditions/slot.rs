@@ -120,6 +120,14 @@ impl Battle {
             return;
         }
         let kind = self.dex.move_kind[id as usize];
+        // A target that isn't on the field (revived by Revival Blessing,
+        // not yet sent in): the damage is calculated (its draws), then
+        // dealing it fails and so does the hit.
+        if !self.mon(t).is_active || self.mon(t).revived {
+            self.move_damage(src, t, mv, kind, move_type, false, false);
+            log_line!(self, "|-fail|{si}");
+            return;
+        }
         self.damaging_move_hit(src, &[t], mv, kind, move_type, false, false, false);
     }
 

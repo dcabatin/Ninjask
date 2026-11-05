@@ -217,7 +217,6 @@ impl Battle {
             None
         };
         if let Some(o) = old_active {
-            self.partial_trap_source_leaves((s, o));
             if self.sides[s].mons[o].hp > 0 {
                 // BeforeSwitchOut and eachEvent('Update') (not for a drag, nor
                 // when the switch request ran BeforeSwitchOut), then SwitchOut.
@@ -485,18 +484,6 @@ impl Battle {
         }
     }
 
-    /// A Pokémon leaves its slot (switched out, dragged out or replaced after
-    /// fainting): partial traps it set lose their source.
-    pub(crate) fn partial_trap_source_leaves(&mut self, r: MonRef) {
-        for s in 0..2 {
-            for m in self.sides[s].mons.iter_mut() {
-                if m.vol.partial_trap_source == Some(r) {
-                    m.vol.partial_trap_source = None;
-                }
-            }
-        }
-    }
-
     /// `DragOut` (after Guard Dog and Suction Cups, priority 1): Ingrain
     /// holds the Pokémon in place.
     pub(crate) fn ingrain_on_drag_out(&mut self, t: MonRef) -> bool {
@@ -655,16 +642,6 @@ impl Battle {
             }
         };
         self.swap_refs(s, flip);
-        // References to the swapped Pokémon follow them (partial trapping's user).
-        for side in self.sides.iter_mut() {
-            for m in side.mons.iter_mut() {
-                if let Some((ts, ti)) = m.vol.partial_trap_source {
-                    if ts == s {
-                        m.vol.partial_trap_source = Some((ts, flip(ti)));
-                    }
-                }
-            }
-        }
         for a in self.queue.iter_mut() {
             match &mut a.kind {
                 ActionKind::Move { side, mon, .. }

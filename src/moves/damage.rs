@@ -152,7 +152,7 @@ impl Battle {
     // Each argument is a distinct input of Showdown's `getDamage`; a struct used
     // by this one caller would only rename them.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn move_damage(
+    pub(crate) fn move_damage(
         &mut self,
         r: MonRef,
         t: MonRef,

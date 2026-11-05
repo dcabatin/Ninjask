@@ -281,6 +281,8 @@ impl Battle {
         for side in self.sides.iter_mut() {
             for m in side.mons.iter_mut() {
                 m.vol.syrup_bomb = fix(m.vol.syrup_bomb);
+                // Partial trapping's user, kept while it is off the field.
+                m.vol.partial_trap_source = fix(m.vol.partial_trap_source);
             }
         }
     }
