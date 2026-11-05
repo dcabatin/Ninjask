@@ -35,6 +35,7 @@ from pathlib import Path
 import importlib.util
 
 import ninjask
+from ninjask import to_id
 from ninjask.refsim import RefSim, seed_from_int
 
 # check_reference.py, beside this script: its play loop and divergence report.
@@ -66,6 +67,7 @@ CHAOS_ITEMS = """choicescarf redcard ejectbutton metronome whiteherb mentalherb 
 shedshell lightclay terrainextender electricseed grassyseed mistyseed psychicseed sitrusberry lumberry
 leppaberry ironball normalgem quickclaw kingsrock bindingband bigroot leftovers lifeorb focusband shellbell
 widelens zoomlens brightpowder heatrock damprock smoothrock icyrock""".split()
+LOCKED_FLAGS = {"failroleplay", "failskillswap", "noentrain", "notrace", "noreceiver"}
 NATURES = ["Adamant", "Modest", "Jolly", "Timid", "Bold", "Careful", "Brave", "Quiet"]
 
 
@@ -89,7 +91,12 @@ def pools(d, spec) -> dict:
         "attacks": attacks,
         "legal": legal,
         "all_moves": sorted(m for m in supported if m != "struggle"),
-        "all_abilities": sorted(abilities - {"noability"}),
+        # An ability no move or ability can pass on (Illusion, Stance Change,
+        # Disguise...) only comes on a species that has it.
+        "all_abilities": sorted(
+            a for a in abilities - {"noability"}
+            if not LOCKED_FLAGS <= set(spec.abilities.get(a, {}).get("flags", {}))
+        ),
         "all_items": sorted(i for i in items if not spec.items.get(i, {}).get("megaStone")),
         "stones": stones,
     }
@@ -138,7 +145,16 @@ def wide_team(rng: random.Random, d, spec, parts, size: int, mix: str) -> str | 
             continue
         used.add(base)
         abilities = parts["abilities"] if chaos else parts["all_abilities"]
-        ability = "illusion" if sp == "zoroark" else "imposter" if sp == "ditto" else rng.choice(abilities)
+        own = [to_id(a) for a in spec.species[sp]["abilities"].values()] if sp in spec.species else []
+        own = [a for a in own if a in d.supported_abilities()]
+        if sp == "zoroark":
+            ability = "illusion"
+        elif sp == "ditto":
+            ability = "imposter"
+        elif own and rng.random() < 0.3:
+            ability = rng.choice(own)
+        else:
+            ability = rng.choice([a for a in abilities if a in parts["all_abilities"] or not chaos])
         pool = parts["moves"] if chaos else parts["all_moves"]
         ms = rng.sample(pool, 3)
         ms.append(rng.choice([m for m in parts["attacks"] if m not in ms]))
@@ -147,6 +163,10 @@ def wide_team(rng: random.Random, d, spec, parts, size: int, mix: str) -> str | 
         stones = parts["stones"].get(name, [])
         if stones and rng.random() < 0.5:
             item = rng.choice(stones)
+            # No Pokémon that can Mega Evolve can transform first.
+            if ability == "imposter":
+                ability = rng.choice([a for a in parts["all_abilities"] if a != "imposter"])
+            ms = [m if m != "transform" else "protect" for m in ms]
         else:
             item = rng.choice((parts["items"] if chaos else parts["all_items"]) + [""])
         nature = rng.choice(NATURES)

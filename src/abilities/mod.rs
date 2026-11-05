@@ -96,11 +96,17 @@ impl Battle {
         if m.revived {
             return true;
         }
+        // Collecting a sort's handlers: Showdown collects a suppressed
+        // ability's handler too (Gastro Acid, Mold Breaker, a transformed
+        // Pokémon's `notransform` ability) and skips it when it runs.
+        if self.turn_state.sorting {
+            return false;
+        }
         // Each remaining cause needs a battle or Pokémon state that is
         // usually absent: test those before reading the ability's flags.
         let breaker = self.ability_breaker.is_some();
         let transformed = m.transformed.is_some();
-        let gastro_acid = m.vol.gastro_acid && !self.turn_state.sorting;
+        let gastro_acid = m.vol.gastro_acid;
         if !(breaker || transformed || gastro_acid) {
             return false;
         }
@@ -389,7 +395,10 @@ impl Battle {
     ) {
         let ident = self.ident(t);
         let by_other = source != Some(t);
-        let quiet = self.effect_has_secondaries(effect);
+        // No message for a move's secondary effect, nor for Octolock's
+        // residual drop (Clear Body, White Smoke, Full Metal Body).
+        let quiet = self.effect_has_secondaries(effect)
+            || matches!(effect, EffectRef::Move(m) if self.dex.mv(m).id == "octolock");
         let dex = self.dex.clone();
         let name = dex.ability(self.mon(t).ability).name.as_str();
         match self.ability_kind(t) {

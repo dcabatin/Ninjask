@@ -127,13 +127,15 @@ impl Battle {
             if self.item_kind(t) == Some(ItemKind::EjectButton) && !mv.has(MoveFlag::FutureMove) {
                 handlers.push((t, SecondaryHandler::EjectButton, 2, speed, 8));
             }
-            if self.has_ability(t, AbilityKind::Pickpocket) {
+            // Collected by the raw ability (a suppressed one still sorts),
+            // checked when run.
+            if self.raw_ability_kind(t) == AbilityKind::Pickpocket {
                 handlers.push((t, SecondaryHandler::Pickpocket, 0, speed, 7));
             }
             if self.item_kind(t) == Some(ItemKind::RedCard) {
                 handlers.push((t, SecondaryHandler::RedCard, 0, speed, 8));
             }
-            if self.has_ability(t, AbilityKind::Berserk) {
+            if self.raw_ability_kind(t) == AbilityKind::Berserk {
                 handlers.push((t, SecondaryHandler::Berserk, 0, speed, 7));
             }
         }
@@ -147,7 +149,11 @@ impl Battle {
                     }
                 }
                 SecondaryHandler::EjectButton => self.eject_button(src, t),
-                SecondaryHandler::Pickpocket => self.pickpocket(src, t, mv),
+                SecondaryHandler::Pickpocket => {
+                    if self.has_ability(t, AbilityKind::Pickpocket) {
+                        self.pickpocket(src, t, mv)
+                    }
+                }
                 SecondaryHandler::RedCard => self.red_card(src, t, mv),
                 SecondaryHandler::Berserk => self.berserk_on_after_move_secondary(src, t),
             }
@@ -168,7 +174,7 @@ impl Battle {
             .iter()
             .filter(|&&t| !self.hits_substitute(src, t, mv))
         {
-            if self.has_ability(t, AbilityKind::Berserk) {
+            if self.raw_ability_kind(t) == AbilityKind::Berserk {
                 hs.push((t, SecondaryHandler::Berserk, 0, self.mon(t).speed, 7));
             }
         }

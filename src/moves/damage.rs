@@ -742,8 +742,9 @@ impl Battle {
         if self.mon(t).vol.endure {
             hs.push(ModHandler::new(-10, speed, 2));
         }
+        // A suppressed Damp (Gastro Acid) still sorts; it's skipped when run.
         for p in self.all_active() {
-            if self.mon(p).hp > 0 && self.has_ability(p, AbilityKind::Damp) {
+            if self.mon(p).hp > 0 && self.raw_ability_kind(p) == AbilityKind::Damp {
                 hs.push(ModHandler::new(0, self.mon(p).speed, 7));
             }
         }

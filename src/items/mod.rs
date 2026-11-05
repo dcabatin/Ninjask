@@ -356,7 +356,7 @@ impl Battle {
         if self.mon(src).vol.metronome.is_some() {
             hs.push((H::Metronome, key(speed, 2)));
         }
-        if self.has_ability(src, AbilityKind::Sniper) {
+        if self.raw_ability_kind(src) == AbilityKind::Sniper {
             hs.push((H::Sniper, key(speed, 7)));
         }
         match self.item_kind(src) {
@@ -420,7 +420,9 @@ impl Battle {
                         chain = chain.then(n, d);
                     }
                 }
-                H::Sniper if crit => chain = chain.then(3, 2),
+                H::Sniper if crit && self.has_ability(src, AbilityKind::Sniper) => {
+                    chain = chain.then(3, 2)
+                }
                 H::LifeOrb => chain = chain.then(5324, 4096),
                 H::ExpertBelt if type_mod > 0 => chain = chain.then(4915, 4096),
                 H::FriendGuard(r)

@@ -855,11 +855,28 @@ impl Battle {
                     if ck.volatile_duration() > 0 {
                         self.stamp_volatile(r, ResidualVol::Charging);
                     }
+                    // twoturnmove's onStart: a move called by another (Copycat,
+                    // Sleep Talk) aims at the slot of its target as TryMove saw
+                    // it, after redirection (Lightning Rod), or of a random foe
+                    // if that one has fainted.
+                    let mut loc = target_loc;
+                    if called_by.is_some() && mv.target != Target::SelfTarget {
+                        let mut d = last;
+                        if self.mon(d).fainted {
+                            let foes: Small<MonRef> = (0..self.sides[1 - r.0].n_active)
+                                .filter_map(|sl| self.active(1 - r.0, sl))
+                                .collect();
+                            if !foes.is_empty() {
+                                d = self.rng.sample(&foes);
+                            }
+                        }
+                        loc = self.loc_of(r, d);
+                    }
                     let v = &mut self.mon_mut(r).vol;
                     v.two_turn = Some(move_id);
                     v.two_turn_duration = 2;
                     v.charging = Some(move_id);
-                    v.charging_target_loc = target_loc;
+                    v.charging_target_loc = loc;
                     v.charging_duration = ck.volatile_duration();
                     self.attr_move_line(line, "[still]");
                     // twoturnmove's onStart runs PrepareHit (Protean).

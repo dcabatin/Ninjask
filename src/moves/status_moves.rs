@@ -254,13 +254,14 @@ impl Battle {
                 self.force_switch_target(r, t);
             }
         }
-        // A substitute's null and a failure both drop the target from
-        // targetsCopy (no gotAttacked).
-        self.active_move.status_reached = hit
+        // A substitute's null, a failure and NOT_FAIL (Heal Pulse at full HP)
+        // all drop the target from targetsCopy (no gotAttacked).
+        let reached: Vec<MonRef> = hit
             .iter()
             .copied()
-            .filter(|t| !blocked.contains(t))
+            .filter(|t| !blocked.contains(t) && !self.active_move.not_fail.contains(t))
             .collect();
+        self.active_move.status_reached = reached;
         hit
     }
 

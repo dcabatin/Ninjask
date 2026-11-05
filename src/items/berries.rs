@@ -320,13 +320,15 @@ impl Battle {
     pub(crate) fn run_after_use_item(&mut self, r: MonRef) {
         use crate::abilities::{compare_mod, ModHandler};
         let mut hs: Small<(Option<MonRef>, ModHandler)> = Small::new();
-        if self.has_ability(r, AbilityKind::Unburden) {
+        // Collected by the raw ability (a suppressed one still sorts),
+        // checked when run.
+        if self.raw_ability_kind(r) == AbilityKind::Unburden {
             hs.push((None, ModHandler::new(0, self.mon(r).speed, 7)));
         }
         let mut side: Small<MonRef> = smallvec::smallvec![r];
         side.extend(self.allies_of(r));
         for h in side {
-            if self.has_ability(h, AbilityKind::Symbiosis)
+            if self.raw_ability_kind(h) == AbilityKind::Symbiosis
                 && self.mon(h).hp > 0
                 && !self.mon(h).fainted
             {
@@ -339,7 +341,11 @@ impl Battle {
         for &(h, _) in hs.iter() {
             match h {
                 None => self.after_use_item(r),
-                Some(h) => self.symbiosis(h, r),
+                Some(h) => {
+                    if self.has_ability(h, AbilityKind::Symbiosis) {
+                        self.symbiosis(h, r)
+                    }
+                }
             }
         }
     }

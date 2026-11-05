@@ -132,6 +132,17 @@ the new `_core.abi3.so`.
     ties with an ally's Receiver at equal speed).
   - Cud Chew re-eating a berry under Magic Room (or Klutz) has no effect,
     as Showdown's suppressed `Eat` event leaves it.
+  - A charging move called by another (Copycat) remembers the slot of its
+    target after redirection (Lightning Rod), as `twoturnmove` does.
+  - Clear Body, White Smoke and Full Metal Body stay silent for Octolock's
+    drop.
+  - A status move whose effect returns NOT_FAIL (Heal Pulse at full HP)
+    doesn't count as an attack (`attackedBy`).
+  - Event sorts collect a suppressed ability's handler too, as
+    `findEventHandlers` does, and skip it when it runs: Gastro Acid, Mold
+    Breaker, and a transformed Pokémon's `notransform` ability (a Ditto
+    copying Morpeko's Hunger Switch), for Damp, No Guard, Pickpocket,
+    Berserk, Unburden, Symbiosis, Sniper and the residual handlers.
 
 ### Changed
 

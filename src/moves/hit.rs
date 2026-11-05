@@ -319,7 +319,8 @@ impl Battle {
                 let Some(h) = self.active(s, slot).filter(|&h| self.mon(h).hp > 0) else {
                     continue;
                 };
-                if self.has_ability(h, crate::kinds::AbilityKind::NoGuard) {
+                // A suppressed No Guard still sorts (findEventHandlers).
+                if self.raw_ability_kind(h) == crate::kinds::AbilityKind::NoGuard {
                     hs.push((Some(h), ModHandler::new(0, self.mon(h).speed, 7)));
                 }
             }
