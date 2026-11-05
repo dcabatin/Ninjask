@@ -579,6 +579,9 @@ impl Battle {
                 }
                 dealt_now.push((t, dealt));
                 self.note_move_damage(t, r);
+                if mv.has(MoveFlag::FutureMove) && self.mon(t).hp == 0 {
+                    self.turn_state.future_move_kills.push(t);
+                }
                 self.note_hit_damage(t, dealt);
                 total_damage += dealt;
                 if let (Some((n, d)), true) = (mv.drain, dealt > 0) {

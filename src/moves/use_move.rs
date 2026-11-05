@@ -176,7 +176,11 @@ impl Battle {
         // `recharge` (no target type) get a random foe too.
         let tracks =
             move_id.is_some_and(|id| self.dex.move_kind[id as usize] == MoveKind::SnipeShot);
-        let target = match (move_id, self.target_ignoring_redirection(r, tracks)) {
+        let original = self.take_original_target(r);
+        let target = match (
+            move_id,
+            self.target_ignoring_redirection(r, tracks, original),
+        ) {
             (_, Some(t)) => Some(t),
             (Some(id), None) => {
                 let (tt, smart) = (self.dex.mv(id).target, self.dex.mv(id).smart_target);
@@ -1594,17 +1598,16 @@ impl Battle {
     /// `getTarget` for a `tracksTarget` move (Snipe Shot) or a Stalwart
     /// user: the original target while it is still active, wherever it now
     /// stands.
-    pub(crate) fn target_ignoring_redirection(&self, r: MonRef, tracks: bool) -> Option<MonRef> {
+    pub(crate) fn target_ignoring_redirection(
+        &self,
+        r: MonRef,
+        tracks: bool,
+        original: Option<SideName>,
+    ) -> Option<MonRef> {
         if !tracks && !self.has_ability(r, AbilityKind::Stalwart) {
             return None;
         }
-        let user = (r.0, self.mon(r).name.clone());
-        let (_, target) = self
-            .turn_state
-            .original_targets
-            .iter()
-            .find(|(u, _)| *u == user)?;
-        let (s, name) = target.as_ref()?;
+        let (s, name) = original.as_ref()?;
         let i = self.sides[*s].mons.iter().position(|m| &m.name == name)?;
         let m = &self.sides[*s].mons[i];
         (m.is_active && !m.fainted && !m.revived).then_some((*s, i))

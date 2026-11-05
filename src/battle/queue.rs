@@ -683,12 +683,22 @@ impl Battle {
         }
     }
 
-    /// resolveAction's `originalTarget` for a move action.
+    /// resolveAction's `originalTarget` for a move action. Each action has
+    /// its own: an Instructed move queued in front of the user's own keeps
+    /// a second one, and runs (and takes it) first.
     pub(crate) fn note_original_target(&mut self, r: MonRef, loc: i8) {
         let target = self.at_loc(r, loc).map(|t| (t.0, self.mon(t).name.clone()));
         let user = (r.0, self.mon(r).name.clone());
-        self.turn_state.original_targets.retain(|(u, _)| *u != user);
         self.turn_state.original_targets.push((user, target));
+    }
+
+    /// The running move action's `originalTarget`: the user's most recently
+    /// made action's, taken off the list.
+    pub(crate) fn take_original_target(&mut self, r: MonRef) -> Option<SideName> {
+        let user = (r.0, self.mon(r).name.clone());
+        let list = &mut self.turn_state.original_targets;
+        let i = list.iter().rposition(|(u, _)| *u == user)?;
+        list.remove(i).1
     }
 }
 fn action_order(kind: &ActionKind) -> u32 {

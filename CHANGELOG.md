@@ -90,6 +90,14 @@ the new `_core.abi3.so`.
     act (its check is onTryHit), not before.
   - Struggle is typeless (`???`) rather than Stellar, so Protean and Libero
     leave it alone and it gets no STAB.
+  - Each queued move keeps its own `originalTarget` (Stalwart, Snipe
+    Shot): an Instructed move queued in front of the user's own no longer
+    replaces the target the user's own move tracks.
+  - Destiny Bond doesn't take down the user of a Future Sight that knocks
+    out its holder (`futuremove`).
+  - A Pokémon brought in by Baton Pass or Shed Tail starts with no
+    record of past hits (`timesAttacked`, `attackedBy`), as
+    `copyVolatileFrom`'s `clearVolatile` leaves it.
 
 ### Changed
 

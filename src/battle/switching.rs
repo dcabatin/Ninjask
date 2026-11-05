@@ -314,8 +314,14 @@ impl Battle {
             m.toxic_stage = 0;
         }
         if let Some((vol, boosts)) = carried {
+            // copyVolatileFrom starts with the newcomer's clearVolatile
+            // (Champions: timesAttacked too): a revived Pokémon hit on the
+            // turn it fainted keeps those only when it comes in plainly.
             m.vol = vol;
             m.boosts = boosts;
+            m.times_attacked = 0;
+            m.attacked_by.clear();
+            m.hurt_this_turn = None;
         }
         let who = (s, slot);
         self.gastro_acid_on_copy(who);
@@ -598,7 +604,7 @@ impl Battle {
         else {
             return;
         };
-        if src.0 == r.0 {
+        if src.0 == r.0 || self.turn_state.future_move_kills.contains(&r) {
             return;
         }
         let ri = self.ident(r);

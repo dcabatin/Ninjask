@@ -86,6 +86,9 @@ impl Battle {
         self.turn_state
             .move_kills
             .retain(|(t, _)| !queue.contains(t));
+        self.turn_state
+            .future_move_kills
+            .retain(|t| !queue.contains(t));
         if self.ended {
             return;
         }

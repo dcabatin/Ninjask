@@ -81,6 +81,9 @@ pub struct TurnState {
     /// Faint-queue entries caused by a move's damage, with the move's user
     /// (Showdown `faintData.source` when `faintData.effect` is a move).
     pub move_kills: Vec<(MonRef, MonRef)>,
+    /// Those of `move_kills` from a future move (Future Sight): Destiny Bond
+    /// ignores them (`!effect.flags['futuremove']`), Moxie doesn't.
+    pub future_move_kills: Vec<MonRef>,
     /// Pokémon whose queued Round was moved up by another Round
     /// (`action.sourceEffect`); cleared each turn.
     pub round_actions: Vec<MonRef>,
