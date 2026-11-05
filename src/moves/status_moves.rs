@@ -269,8 +269,9 @@ impl Battle {
     /// stopped by TryHit: Soundproof, Good as Gold, Psychic Terrain against
     /// a Prankster one) and not already counting down starts at three.
     /// False when it reached none.
-    pub(super) fn perish_song(&mut self, r: MonRef, mv: &Move) -> bool {
-        let move_type = mv.type_;
+    /// `move_type` is after ModifyType: Liquid Voice makes it Water, which
+    /// Dry Skin and Water Absorb take in TryHit.
+    pub(super) fn perish_song(&mut self, r: MonRef, mv: &Move, move_type: TypeId) -> bool {
         let mut result = false;
         let mut message = false;
         for p in self.all_active() {

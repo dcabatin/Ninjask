@@ -1166,7 +1166,7 @@ impl Battle {
                     }
                     true
                 }
-                MoveKind::PerishSong => self.perish_song(r, mv),
+                MoveKind::PerishSong => self.perish_song(r, mv, move_type),
                 MoveKind::StealthRock => self.add_stealth_rock(1 - r.0),
                 MoveKind::Gravity => self.add_gravity(),
                 MoveKind::FairyLock => self.add_fairy_lock(),

@@ -295,6 +295,11 @@ impl Battle {
         };
         let (ri, name) = (self.ident(r), self.dex.item(item).name.clone());
         log_line!(self, "|-item|{ri}|{name}|[from] ability: Pickup");
+        // setItem refuses a holder with no HP (at perish 0, not yet
+        // fainted): the message shows, the item is lost.
+        if self.mon(r).hp == 0 || !self.mon(r).is_active {
+            return;
+        }
         self.mon_mut(r).item = Some(item);
         self.item_on_start(r);
     }

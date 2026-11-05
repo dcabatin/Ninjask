@@ -228,6 +228,13 @@ impl Battle {
             id: last,
             self_target: false,
         });
+        // Showdown queues only resolveAction's first action: with a
+        // before-turn or priority-charge action first (Mirror Coat, Focus
+        // Punch), the move itself never runs, so its originalTarget isn't
+        // left for the Pokémon's own queued move to take.
+        if charge.is_some() || before.is_some() {
+            self.take_original_target(t);
+        }
         let mut first = charge.or(before).unwrap_or(action);
         first.order = 3;
         self.queue.push_front(first);

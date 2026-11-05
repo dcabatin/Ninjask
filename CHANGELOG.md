@@ -217,6 +217,11 @@ the new `_core.abi3.so`.
     (removeVolatile needs HP); a one-hit KO move on a semi-invulnerable
     target (No Guard) skips the level and Ice checks and keeps its own
     accuracy.
+  - Perish Song's TryHit sees its type after Liquid Voice (Dry Skin,
+    Water Absorb); Pickup on a Pokémon with no HP shows its message but
+    gives no item; an Instructed move whose first action is a before-turn
+    or priority-charge one (Mirror Coat) leaves no original target for the
+    Pokémon's own queued move.
 
 ### Changed
 

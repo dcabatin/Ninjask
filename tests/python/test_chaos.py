@@ -59,6 +59,8 @@ GAMES = [
     (28, 2496),  # a substitute's damage sees the last activeTarget's Unaware
     (31, 1198),  # Oblivious at 0 HP announces itself but can't end Taunt
     (31, 2086),  # Symbiosis mid-switch-in: the balloon announced for its old holder
+    (37, 543),  # Pickup at perish 0: the message, but no item
+    (37, 3301),  # Instructed Mirror Coat queues only its before-turn action
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -89,6 +91,7 @@ MIXED = [
     (32, 2911, "mixed"),  # Symbiosis handlers collected in slot order
     (33, 1967, "wide"),  # Syrup Bomb stays on a holder with no HP
     (33, 2886, "wide"),  # Sheer Cold through No Guard on a Pokémon mid-Fly
+    (36, 1128, "wide"),  # Liquid Voice Perish Song into Dry Skin
 ]
 
 
