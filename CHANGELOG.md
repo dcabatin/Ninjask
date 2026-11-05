@@ -2,12 +2,18 @@
 
 ## Unreleased
 
-## 0.4.0 (2026-11-04)
+## 0.4.0 (2026-11-05)
 
 A native interface for training (`ninjask.Batch`, player-view legal
 choices, numeric observations), experimental exact outcome enumeration
 contributed by CalebBrody (dcabatin/Ninjask#8), and `research/` on what
-trading parity for speed would buy. Every seeded game gives the same logs,
+trading parity for speed would buy. And the fixes for 70 bugs (one
+regression game each in `tests/python/test_chaos.py`) found by fuzzing the
+strangest mechanics against Showdown (`scripts/check_chaos.py`):
+more than 150,000 such games and 34,000 games of a pool that fields every
+legal species, ability, move and item. Their divergence rate fell from
+2.5% to about 1 in 4,000, every divergence found was fixed, and parity on
+real and random teams stays exact. Every seeded game gives the same logs,
 requests and draws as 0.3.0 except where the fixes below apply. The
 fingerprint moved from `6e2f85907f97e4e9` to `fb8b1d107db9f213` with the
 same logs, requests and random numbers: a status move's AfterMoveSecondary
@@ -82,7 +88,9 @@ the new `_core.abi3.so`.
   synthetic games (a Klutz Golurk Tricking away a Metronome).
 - Found by "chaos" games, whose every Pokémon carries Illusion, Imposter,
   Transform, Reflect Type, Perish Song, Future Sight, Skill Swap and the
-  like (all 51 diverging games in 2,000 now match):
+  like, and by the coverage pool of just_a_simulator (418 teams that
+  between them field everything legal). Every game that diverged now
+  matches; `tests/python/test_chaos.py` replays one per bug:
   - Type knowledge as Showdown keeps it (`knownType`): a Pokémon that
     transforms into a foe, or Reflect Types one, hides its new types until
     something attacks it, so Reflect Type on such an ally keeps the old
@@ -222,6 +230,17 @@ the new `_core.abi3.so`.
     gives no item; an Instructed move whose first action is a before-turn
     or priority-charge one (Mirror Coat) leaves no original target for the
     Pokémon's own queued move.
+  - A fainted target's Pressure takes no extra PP (Future Sight aimed at
+    it): an inactive Pokémon's ability is ignored.
+  - A Zoroark whose Illusion is suppressed (Gastro Acid passed by Baton
+    Pass) is revealed as it faints: onFaint is skipped, End isn't; Fling's
+    item line shows even when Symbiosis already gave the item away; the
+    drag itself runs DragOut again, so Guard Dog gained mid-move (Wandering
+    Spirit) holds the target.
+- `check_reference.py` and `check_chaos.py` choose again as often as
+  Showdown refuses a choice for something hidden from the player (an
+  Imprison-disabled move, then a switch out of a hidden Shadow Tag trap),
+  not just once.
 
 ### Changed
 

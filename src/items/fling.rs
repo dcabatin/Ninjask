@@ -151,8 +151,15 @@ impl Battle {
             return;
         }
         self.mon_mut(r).vol.fling = false;
-        let Some(item) = self.mon(r).item else { return };
-        let (ri, name) = (self.ident(r), self.dex.item(item).name.clone());
+        // The item may already be gone (the user's own Symbiosis gave it
+        // to the ally it flung at): the line names no item, and the rest
+        // (lastItem, AfterUseItem) still runs.
+        let ri = self.ident(r);
+        let name = self
+            .mon(r)
+            .item
+            .map(|i| self.dex.item(i).name.clone())
+            .unwrap_or_default();
         log_line!(self, "|-enditem|{ri}|{name}|[from] move: Fling");
         self.consume_item(r, false);
     }

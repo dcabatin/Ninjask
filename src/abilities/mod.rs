@@ -1039,7 +1039,13 @@ impl Battle {
         };
         pressured
             .iter()
-            .filter(|&&t| t.0 != src.0 && self.has_ability(t, AbilityKind::Pressure))
+            // A fainted target (Future Sight aimed at it) isn't active, so its
+            // ability is ignored.
+            .filter(|&&t| {
+                t.0 != src.0
+                    && self.collects_handlers(t)
+                    && self.has_ability(t, AbilityKind::Pressure)
+            })
             .count() as u8
     }
 

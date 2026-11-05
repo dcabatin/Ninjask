@@ -310,6 +310,15 @@ impl Battle {
         if self.mon(t).hp == 0 || self.mon(src).hp == 0 || !self.can_switch_side(t.0) {
             return;
         }
+        if self.drag_out_blocked(t) {
+            return;
+        }
+        self.mon_mut(t).force_switch_flag = true;
+    }
+
+    /// `runEvent('DragOut')`: Guard Dog and Suction Cups, then Ingrain, hold
+    /// the Pokémon in place (each announcing itself).
+    pub(crate) fn drag_out_blocked(&mut self, t: MonRef) -> bool {
         if matches!(
             self.ability_kind(t),
             crate::kinds::AbilityKind::GuardDog | crate::kinds::AbilityKind::SuctionCups
@@ -317,12 +326,9 @@ impl Battle {
             let ti = self.ident(t);
             let name = self.ability_name(t);
             log_line!(self, "|-activate|{ti}|ability: {name}");
-            return;
+            return true;
         }
-        if self.ingrain_on_drag_out(t) {
-            return;
-        }
-        self.mon_mut(t).force_switch_flag = true;
+        self.ingrain_on_drag_out(t)
     }
 
     /// Trick, Switcheroo: swap held items. Fails when neither holds one, or

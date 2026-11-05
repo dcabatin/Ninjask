@@ -175,6 +175,11 @@ impl Battle {
             return;
         }
         let pick = bench[self.rng.random(bench.len() as u32) as usize];
+        // dragIn runs DragOut again: an ability gained since the flag was
+        // set (Guard Dog through Wandering Spirit) still holds it.
+        if self.drag_out_blocked((s, slot)) {
+            return;
+        }
         self.switch_in(s, pick, slot, true, None);
     }
 
@@ -412,6 +417,11 @@ impl Battle {
             if side.total_fainted < 100 {
                 side.total_fainted += 1;
             }
+            // Illusion's onFaint drops the disguise silently, unless the
+            // ability is suppressed (Gastro Acid passed by Baton Pass): then
+            // its End, which is never suppressed, shows the real Pokémon.
+            let illusion_on_faint =
+                self.raw_ability_kind(r) != AbilityKind::Illusion || !self.ability_ignored(r);
             // runEvent('Faint'): Destiny Bond. A faint it queues is handled
             // in this loop, and then the win is checked.
             self.destiny_bond_on_faint(r);
@@ -425,8 +435,11 @@ impl Battle {
             if self.has_ability(r, crate::kinds::AbilityKind::Unnerve) {
                 self.mon_mut(r).ability_state.unnerved = Some(false);
             }
-            // Faint: Illusion's onFaint drops the disguise (after the line).
-            self.mon_mut(r).illusion = None;
+            if illusion_on_faint {
+                self.mon_mut(r).illusion = None;
+            } else {
+                self.end_illusion(r);
+            }
             // The ability's End, then the forme reverts (Showdown faintMessages).
             self.air_lock_on_end(r);
             self.supreme_overlord_on_end(r);
