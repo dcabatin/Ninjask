@@ -69,26 +69,41 @@ widelens zoomlens brightpowder heatrock damprock smoothrock icyrock""".split()
 NATURES = ["Adamant", "Modest", "Jolly", "Timid", "Bold", "Careful", "Brave", "Quiet"]
 
 
-def pools(d, spec) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
-    """The chaos pools cut down to what the engine supports, attacks, species."""
+def pools(d, spec) -> dict:
+    """The chaos pools cut down to what the engine supports; everything it
+    supports (`wide`); attacks; species; each species' Mega Stones."""
     supported = set(d.implemented_moves()) | set(d.generic_moves())
     abilities, items = set(d.supported_abilities()), set(d.supported_items())
     attacks = sorted(
         m for m in d.generic_moves() if spec.moves[m]["category"] != "Status" and spec.moves[m].get("basePower", 0) >= 60
     )
     legal = sorted(spec.team_legal_species & set(d.species_ids()))
-    return (
-        [m for m in CHAOS_MOVES if m in supported],
-        [a for a in CHAOS_ABILITIES if a in abilities],
-        [i for i in CHAOS_ITEMS if i in items],
-        attacks,
-        legal,
-    )
+    stones: dict[str, list[str]] = {}
+    for i in sorted(items):
+        for base in (spec.items.get(i, {}).get("megaStone") or {}):
+            stones.setdefault(base, []).append(i)
+    return {
+        "moves": [m for m in CHAOS_MOVES if m in supported],
+        "abilities": [a for a in CHAOS_ABILITIES if a in abilities],
+        "items": [i for i in CHAOS_ITEMS if i in items],
+        "attacks": attacks,
+        "legal": legal,
+        "all_moves": sorted(m for m in supported if m != "struggle"),
+        "all_abilities": sorted(abilities - {"noability"}),
+        "all_items": sorted(i for i in items if not spec.items.get(i, {}).get("megaStone")),
+        "stones": stones,
+    }
 
 
-def chaos_team(rng: random.Random, d, spec, parts, size: int = 6) -> str | None:
-    """A packed team of `size` chaos sets, or None if the engine refuses it."""
-    moves, abilities, items, attacks, legal = parts
+def chaos_team(rng: random.Random, d, spec, parts, size: int = 6, mix: str = "chaos") -> str | None:
+    """A packed team of `size` chaos sets, or None if the engine refuses it.
+
+    `mix`: "chaos" draws from the chaos pools; "wide" from everything the
+    engine supports, Mega Stones included; "mixed" picks one of the two for
+    each Pokémon."""
+    if mix != "chaos":
+        return wide_team(rng, d, spec, parts, size, mix)
+    moves, abilities, items, attacks, legal = (parts[k] for k in ("moves", "abilities", "items", "attacks", "legal"))
     sets, used = [], set()
     while len(sets) < size:
         r = rng.random()
@@ -111,21 +126,51 @@ def chaos_team(rng: random.Random, d, spec, parts, size: int = 6) -> str | None:
     return None if d.team_problems(team) else team
 
 
+def wide_team(rng: random.Random, d, spec, parts, size: int, mix: str) -> str | None:
+    sets, used = [], set()
+    while len(sets) < size:
+        chaos = mix == "mixed" and rng.random() < 0.5
+        r = rng.random()
+        sp = "zoroark" if r < 0.06 else "ditto" if r < 0.09 else rng.choice(parts["legal"])
+        name = spec.species[sp]["name"] if sp in spec.species else sp
+        base = spec.species[sp]["baseSpecies"] if sp in spec.species else sp
+        if base in used:
+            continue
+        used.add(base)
+        abilities = parts["abilities"] if chaos else parts["all_abilities"]
+        ability = "illusion" if sp == "zoroark" else "imposter" if sp == "ditto" else rng.choice(abilities)
+        pool = parts["moves"] if chaos else parts["all_moves"]
+        ms = rng.sample(pool, 3)
+        ms.append(rng.choice([m for m in parts["attacks"] if m not in ms]))
+        if sp == "ditto":
+            ms = ["transform"]
+        stones = parts["stones"].get(name, [])
+        if stones and rng.random() < 0.5:
+            item = rng.choice(stones)
+        else:
+            item = rng.choice((parts["items"] if chaos else parts["all_items"]) + [""])
+        nature = rng.choice(NATURES)
+        evs = ",".join(str(rng.choice([0, 0, 16, 32])) for _ in range(6))
+        sets.append(f"{name}||{item}|{ability}|{','.join(ms)}|{nature}|{evs}||||50|")
+    team = "]".join(sets)
+    return None if d.team_problems(team) else team
+
+
 _worker: dict = {}
 
 
-def _init(verbose: bool = False) -> None:
+def _init(verbose: bool = False, mix: str = "chaos") -> None:
     sim = RefSim()
     multiprocessing.util.Finalize(None, sim.close, exitpriority=10)
     d, spec = ninjask.dex(FORMAT), ninjask.load(FORMAT)
-    _worker.update(sim=sim, dex=d, spec=spec, parts=pools(d, spec), verbose=verbose)
+    _worker.update(sim=sim, dex=d, spec=spec, parts=pools(d, spec), verbose=verbose, mix=mix)
 
 
 def teams_for(g: int, seed: int) -> tuple[random.Random, list[str]]:
     rng = random.Random(f"chaos:{seed}:{g}")
     teams: list[str] = []
     while len(teams) < 2:
-        t = chaos_team(rng, _worker["dex"], _worker["spec"], _worker["parts"])
+        t = chaos_team(rng, _worker["dex"], _worker["spec"], _worker["parts"], mix=_worker.get("mix", "chaos"))
         if t:
             teams.append(t)
     return rng, teams
@@ -154,10 +199,12 @@ def main() -> None:
     p.add_argument("--out", default="chaos-divergences.txt", help="where each divergence is written")
     p.add_argument("--game", type=int, help="play only this game, printing its logs (with --verbose)")
     p.add_argument("--verbose", action="store_true")
+    p.add_argument("--mix", choices=["chaos", "wide", "mixed"], default="chaos",
+                   help="chaos pools only, everything supported (Mega Stones too), or a mix per Pokémon")
     a = p.parse_args()
 
     if a.game is not None:
-        _init(a.verbose)
+        _init(a.verbose, a.mix)
         g, inputs, kind, detail = run_game((a.game, a.seed))
         print(detail if kind else f"game {g} matched ({inputs} inputs)")
         sys.exit(1 if kind else 0)
@@ -166,7 +213,7 @@ def main() -> None:
     first: dict[str, list[int]] = {}
     matched = inputs = 0
     jobs = [(g, a.seed) for g in range(a.first, a.first + a.games)]
-    with multiprocessing.Pool(a.workers, _init) as pool, open(a.out, "w") as out:
+    with multiprocessing.Pool(a.workers, _init, (False, a.mix)) as pool, open(a.out, "w") as out:
         for g, n, kind, detail in pool.imap_unordered(run_game, jobs, chunksize=2):
             if kind is None:
                 matched += 1
