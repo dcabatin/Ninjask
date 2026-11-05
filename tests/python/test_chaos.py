@@ -92,6 +92,7 @@ MIXED = [
     (33, 1967, "wide"),  # Syrup Bomb stays on a holder with no HP
     (33, 2886, "wide"),  # Sheer Cold through No Guard on a Pokémon mid-Fly
     (36, 1128, "wide"),  # Liquid Voice Perish Song into Dry Skin
+    (41, 4691, "mixed"),  # no Pressure PP from a fainted Future Sight target
 ]
 
 

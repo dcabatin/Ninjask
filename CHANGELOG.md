@@ -222,6 +222,8 @@ the new `_core.abi3.so`.
     gives no item; an Instructed move whose first action is a before-turn
     or priority-charge one (Mirror Coat) leaves no original target for the
     Pokémon's own queued move.
+  - A fainted target's Pressure takes no extra PP (Future Sight aimed at
+    it): an inactive Pokémon's ability is ignored.
 
 ### Changed
 
