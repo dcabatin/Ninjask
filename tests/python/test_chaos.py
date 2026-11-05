@@ -61,6 +61,8 @@ GAMES = [
     (31, 2086),  # Symbiosis mid-switch-in: the balloon announced for its old holder
     (37, 543),  # Pickup at perish 0: the message, but no item
     (37, 3301),  # Instructed Mirror Coat queues only its before-turn action
+    (43, 400),  # a Baton-Passed Gastro Acid: Illusion revealed as Zoroark faints
+    (43, 3158),  # Fling's end line when Symbiosis already gave the item away
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -93,6 +95,7 @@ MIXED = [
     (33, 2886, "wide"),  # Sheer Cold through No Guard on a Pokémon mid-Fly
     (36, 1128, "wide"),  # Liquid Voice Perish Song into Dry Skin
     (41, 4691, "mixed"),  # no Pressure PP from a fainted Future Sight target
+    (42, 5377, "wide"),  # dragIn's DragOut: Guard Dog gained by Wandering Spirit
 ]
 
 

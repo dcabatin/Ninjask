@@ -224,6 +224,15 @@ the new `_core.abi3.so`.
     Pokémon's own queued move.
   - A fainted target's Pressure takes no extra PP (Future Sight aimed at
     it): an inactive Pokémon's ability is ignored.
+  - A Zoroark whose Illusion is suppressed (Gastro Acid passed by Baton
+    Pass) is revealed as it faints: onFaint is skipped, End isn't; Fling's
+    item line shows even when Symbiosis already gave the item away; the
+    drag itself runs DragOut again, so Guard Dog gained mid-move (Wandering
+    Spirit) holds the target.
+- `check_reference.py` and `check_chaos.py` choose again as often as
+  Showdown refuses a choice for something hidden from the player (an
+  Imprison-disabled move, then a switch out of a hidden Shadow Tag trap),
+  not just once.
 
 ### Changed
 

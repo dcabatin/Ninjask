@@ -156,10 +156,14 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                 choices = team_preview_choices(req) if req.get("teamPreview") else joint_choices(req, include_ally_targets=True, game_type=GAME_TYPE)
                 choice = rng.choice(choices)
                 obs = sd.choose(side, choice, omniscient=True)
-                if obs.errors.get(side) and "[Unavailable choice]" in obs.errors[side] and obs.requests.get(side):
-                    # A move disabled in secret (Imprison's 'hidden'): the request
-                    # offered it, Showdown refuses it and asks again with it
-                    # disabled. A player chooses again; the engine never sees it.
+                # Something hidden from the player (Imprison's 'hidden' disable, a
+                # trap by an ability the request only calls maybeTrapped):
+                # the request offered the choice, Showdown refuses it and asks
+                # again with it marked. A player chooses again, as often as
+                # that happens; the engine never sees the refused choices.
+                for _ in range(8):
+                    if not (obs.errors.get(side) and "[Unavailable choice]" in obs.errors[side] and obs.requests.get(side)):
+                        break
                     choice = rng.choice(joint_choices(obs.requests[side], include_ally_targets=True, game_type=GAME_TYPE))
                     obs = sd.choose(side, choice, omniscient=True)
                 if obs.errors.get(side):
