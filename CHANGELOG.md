@@ -8,8 +8,11 @@ A native interface for training (`ninjask.Batch`, player-view legal
 choices, numeric observations), experimental exact outcome enumeration
 contributed by CalebBrody (dcabatin/Ninjask#8), and `research/` on what
 trading parity for speed would buy. Every seeded game gives the same logs,
-requests and draws as 0.3.0 except where the fixes below apply; the
-fingerprint is still `6e2f85907f97e4e9`.
+requests and draws as 0.3.0 except where the fixes below apply. The
+fingerprint moved from `6e2f85907f97e4e9` to `fb8b1d107db9f213` with the
+same logs, requests and random numbers: a status move's AfterMoveSecondary
+sort now collects the frozen target's handler, as Showdown does, so a
+traced sort records one item where it had none.
 
 Upgrading an editable checkout from before 0.3.0: delete
 `python/ninjask/_core.cpython-*.so`, or Python keeps loading it instead of
@@ -189,6 +192,15 @@ the new `_core.abi3.so`.
     so Unaware doesn't hide the user's boosts; the residual sort collects
     every Pokémon in a slot, a revived one not yet sent back in included
     (with its ability).
+  - Later hits of Population Bomb and Triple Axel: a fractional accuracy
+    (after the stage table) takes no ModifyAccuracy modifier (Gravity,
+    Compound Eyes...), as Showdown's runEvent modifies only whole numbers;
+    Skill Link's removal of the per-hit check is decided once, so losing
+    the ability mid-move (Wandering Spirit) changes nothing.
+  - A status move's AfterMoveSecondary sort collects every handler
+    (Pickpocket, Red Card, Eject Button, freeze), not only Berserk's; Heal
+    Bell ignores a fainted ally's Good as Gold; Leftovers taken during the
+    residuals (Symbiosis) still heals its old holder that turn.
 
 ### Changed
 

@@ -356,7 +356,7 @@ cargo run --release --example fingerprint -- data/derived/format/gen9championsvg
 ```
 
 On the bundled fixture teams (`tests/fixtures/regmc_teams.txt`) the fingerprint is
-`6e2f85907f97e4e9`. A change that preserves behaviour must leave it unchanged.
+`fb8b1d107db9f213`. A change that preserves behaviour must leave it unchanged.
 
 The bench plays random legal games on one thread with logging off: about
 5,400 to 6,700 games/s over ten runs on one core of a 4-vCPU cloud VM (Xeon

@@ -148,7 +148,11 @@ impl Battle {
                         self.cure_status(t);
                     }
                 }
-                SecondaryHandler::EjectButton => self.eject_button(src, t),
+                SecondaryHandler::EjectButton => {
+                    if mv.category != Category::Status {
+                        self.eject_button(src, t)
+                    }
+                }
                 SecondaryHandler::Pickpocket => {
                     if self.has_ability(t, AbilityKind::Pickpocket) {
                         self.pickpocket(src, t, mv)
@@ -160,8 +164,9 @@ impl Battle {
         }
     }
 
-    /// `afterMoveSecondaryEvent` after a status move: of the handlers, only
-    /// Berserk's acts on a status move (it marks the berries ready).
+    /// `afterMoveSecondaryEvent` after a status move: the same handlers are
+    /// collected and sorted (two Pickpockets tie), but only Berserk's acts
+    /// on a status move (it marks the berries ready).
     pub(crate) fn run_after_move_secondary_status(
         &mut self,
         src: MonRef,
@@ -169,19 +174,12 @@ impl Battle {
         mv: &Move,
     ) {
         self.begin_damaging_move(mv, false);
-        let mut hs: Small<_> = Small::new();
-        for &t in targets
+        let hit: Small<MonRef> = targets
             .iter()
-            .filter(|&&t| !self.hits_substitute(src, t, mv))
-        {
-            if self.raw_ability_kind(t) == AbilityKind::Berserk {
-                hs.push((t, SecondaryHandler::Berserk, 0, self.mon(t).speed, 7));
-            }
-        }
-        self.speed_sort_by(&mut hs, compare_secondary_handlers);
-        for &(t, ..) in hs.iter() {
-            self.berserk_on_after_move_secondary(src, t);
-        }
+            .copied()
+            .filter(|&t| !self.hits_substitute(src, t, mv))
+            .collect();
+        self.run_after_move_secondary(src, &hit, mv);
     }
 
     /// Berserk's `onAfterMoveSecondary`: +1 Special Attack when the move

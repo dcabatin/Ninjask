@@ -695,7 +695,13 @@ impl Battle {
                 }
             }
             HandlerKind::Leftovers(r) => {
-                if self.item_kind(r) == Some(ItemKind::Leftovers) {
+                // takeItem clears the item's state in place, so a holder
+                // whose Leftovers left during the residuals (Symbiosis) still
+                // heals: onResidual doesn't look at the item. Only setItem
+                // (another item) gives a new state, which skips the handler.
+                let taken =
+                    self.mon(r).item.is_none() && !self.mon(r).revived && !self.ignoring_item(r);
+                if taken || self.item_kind(r) == Some(ItemKind::Leftovers) {
                     let amount = (self.mon(r).maxhp as u32 / 16).max(1);
                     self.ripen_on_try_heal_leftovers(r);
                     self.heal(r, amount, "|[from] item: Leftovers");

@@ -503,6 +503,9 @@ impl Battle {
                 .active_move
                 .call
                 .is_some_and(|c| c.user == r && self.sleep_usable(c.source));
+        // Skill Link deletes `multiaccuracy` in ModifyMove: decided once, so
+        // losing Skill Link mid-move (Wandering Spirit) changes nothing.
+        let multiaccuracy = self.has_multiaccuracy(r, kind);
         for hit in 1..=hits {
             if hit > 1 && self.mon(r).status == Status::Slp && !sleep_usable {
                 break;
@@ -532,10 +535,7 @@ impl Battle {
             }
             // multiaccuracy (Triple Axel): each hit after the first rolls
             // again, and a miss ends the move without a message.
-            if self.has_multiaccuracy(r, kind)
-                && hit > 1
-                && !self.multiaccuracy_hits(r, targets[0], mv)
-            {
+            if multiaccuracy && hit > 1 && !self.multiaccuracy_hits(r, targets[0], mv) {
                 // `targetsCopy` was just reset to every target, so gotAttacked
                 // below also reaches one a substitute shielded on the last hit.
                 accuracy_break = true;

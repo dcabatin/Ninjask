@@ -54,6 +54,7 @@ GAMES = [
     (16, 33),  # Baton Pass doesn't pass on unknown types
     (19, 3654),  # type immunity for a locked Thrash aimed at its own user
     (22, 2330),  # a revived Pokémon in its slot joins the residual sort
+    (25, 1385),  # Leftovers given away by Symbiosis still heals that turn
 ]
 # (seed, game, mix) from the wider pools.
 MIXED = [
@@ -75,6 +76,10 @@ MIXED = [
     (15, 774, "wide"),  # Seed Sower's terrain mid-residual keeps its 5 turns
     (17, 2999, "mixed"),  # Stench's flinch on Syrup Bomb, past the move's own handler
     (21, 2117, "wide"),  # Shell Side Arm reads boosted stats without ModifyBoost (Unaware)
+    (23, 1613, "mixed"),  # a fractional per-hit accuracy keeps no Gravity modifier
+    (24, 2128, "wide"),  # a status move's AfterMoveSecondary sort: two Pickpockets
+    (24, 2476, "wide"),  # Skill Link lost mid-move: still no per-hit accuracy
+    (24, 3874, "wide"),  # Heal Bell and a fainted Good as Gold ally
 ]
 
 

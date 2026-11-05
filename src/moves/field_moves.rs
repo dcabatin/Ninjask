@@ -248,7 +248,8 @@ impl Battle {
 
     /// Heal Bell's `onHit`: the user's whole team (bench too) is cured. A
     /// Soundproof or Good as Gold ally on the field is immune, unless the
-    /// user's move ignores abilities.
+    /// user's move ignores abilities (a fainted one isn't active, so its
+    /// ability is ignored).
     pub(crate) fn heal_bell(&mut self, r: MonRef) -> bool {
         let ri = self.ident(r);
         log_line!(self, "|-activate|{ri}|move: Heal Bell");
@@ -258,6 +259,7 @@ impl Battle {
             if ally != r
                 && !self.suppressing_ability(ally)
                 && self.mon(ally).is_active
+                && !self.mon(ally).fainted
                 && !self.mon(ally).revived
             {
                 let name = match self.ability_kind(ally) {
