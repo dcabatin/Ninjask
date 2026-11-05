@@ -124,31 +124,56 @@ impl Battle {
         }
     }
 
-    /// An item's `onStart` at switch-in.
+    /// An item's `onStart` at switch-in: `singleEvent('SwitchIn')`, which
+    /// skips an item its holder ignores (Klutz, Magic Room).
+    pub(crate) fn item_on_switch_in(&mut self, r: MonRef) {
+        if !self.ignoring_item(r) {
+            self.item_on_start(r);
+        }
+    }
+
+    /// An item's `onStart` when it is set (`setItem`: Trick, Recycle,
+    /// Symbiosis...). `singleEvent('Start')` runs even on a holder that
+    /// ignores its item (Klutz, Magic Room); the seeds and Air Balloon check
+    /// `ignoringItem` themselves, Metronome, White Herb and the Choice items
+    /// don't.
     pub(crate) fn item_on_start(&mut self, r: MonRef) {
-        match self.item_kind(r) {
+        let ignoring = self.ignoring_item(r);
+        match self.held_item_kind(r) {
             Some(ItemKind::Seed(t)) => {
-                if self.field.terrain == Some(t) {
+                if !ignoring && self.field.terrain == Some(t) {
                     self.use_item(r);
                 }
             }
             // Not announced under Gravity.
-            Some(ItemKind::AirBalloon) if self.field.gravity == 0 => {
+            Some(ItemKind::AirBalloon) if !ignoring && self.field.gravity == 0 => {
                 let ident = self.ident(r);
                 log_line!(self, "|-item|{ident}|Air Balloon");
             }
             Some(ItemKind::Metronome) => self.metronome_on_start(r),
             // White Herb's onStart: used at once on a lowered stat (Trick
             // hands it over before announcing it).
-            Some(ItemKind::WhiteHerb) => self.white_herb_check(r),
+            Some(ItemKind::WhiteHerb) => self.white_herb_start(r),
             // A Choice item's onStart removes an old Choice lock.
             Some(k) if k.is_choice() => self.mon_mut(r).vol.choice_lock = None,
             _ => {}
         }
     }
 
+    /// White Herb's `onStart` from `setItem`, which runs on a holder that
+    /// ignores its item: it uses the herb up (`useItem` doesn't check),
+    /// though its `onUse` (the boosts reset) is skipped.
+    pub(crate) fn white_herb_start(&mut self, r: MonRef) {
+        if self.held_item_kind(r) == Some(ItemKind::WhiteHerb)
+            && self.mon(r).boosts.iter().any(|&b| b < 0)
+        {
+            self.use_item(r);
+        }
+    }
+
     /// White Herb's check (its `onStart`, run from `onAnySwitchIn`,
-    /// `onAnyAfterMove`, `onAnyAfterMega` and `onResidual`).
+    /// `onAnyAfterMove`, `onAnyAfterMega` and `onResidual`, which an
+    /// ignored item skips).
     pub(crate) fn white_herb_check(&mut self, r: MonRef) {
         if self.item_kind(r) == Some(ItemKind::WhiteHerb)
             && self.mon(r).boosts.iter().any(|&b| b < 0)

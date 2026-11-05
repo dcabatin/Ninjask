@@ -618,3 +618,65 @@ def test_metal_burst_into_a_substitute_matches_showdown(capsys):
     script = ["team 1234", "team 1234", "move 2, move 2", "move 1, move 1", "move 1, move 1", "move 2, move 1", "move 3 1, move 2", "move 3, move 1"]
     logs = _play_scripted(range(12), "burst", t1, t2, script, capsys)
     assert any(any(line.endswith("[from] drain|[of] p2a: Dragonite") for line in log) for log in logs)
+
+
+ITEM_START_CASES = {
+    # setItem's Start runs on a holder that ignores its item: a Klutz Golurk
+    # that takes a Metronome by Trick gets the Metronome volatile...
+    "trick a metronome onto klutz": (
+        _team(
+            _packed("Golurk", "", "klutz", ["Trick", "CalmMind"], "Modest"),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        _team(
+            _packed("Gliscor", "metronome", "hypercutter", ["PoisonJab", "CalmMind"]),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        ["team 1234", "team 1234", "move 1 1, move 1", "move 2, move 1", "move 2, move 1", "move 2, move 1"],
+    ),
+    # ...and one handed a White Herb with a stat lowered uses it up, though
+    # the reset itself (onUse) is skipped.
+    "trick a white herb onto klutz": (
+        _team(
+            _packed("Golurk", "", "klutz", ["CalmMind"], "Modest"),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        _team(
+            _packed("Florges", "whiteherb", "flowerveil", ["Trick", "CalmMind"], "Timid"),
+            _packed("Pikachu", "", "static", ["IcyWind", "CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        ["team 1234", "team 1234", "move 1, move 1", "move 2, move 1", "move 1, move 1", "move 1 1, move 2"],
+    ),
+    # At switch-in the item's handlers go through singleEvent('SwitchIn'),
+    # which skips an ignored item: a Klutz Metronome holder gets no volatile,
+    # and a White Herb under Magic Room stays put when a Pokémon comes in.
+    "klutz metronome switching in; white herb under magic room": (
+        _team(
+            _packed("Snorlax", "whiteherb", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Pikachu", "", "static", ["CalmMind"], "Timid"),
+            _packed("Golurk", "metronome", "klutz", ["CalmMind"], "Modest"),
+            _packed("Florges", "", "flowerveil", ["CalmMind"], "Calm"),
+        ),
+        _team(
+            _packed("Golurk", "", "noguard", ["MagicRoom", "CalmMind"], "Modest"),
+            _packed("Pikachu", "", "static", ["IcyWind", "CalmMind"], "Timid"),
+            _packed("Snorlax", "", "thickfat", ["CalmMind"], "Calm"),
+            _packed("Garchomp", "", "roughskin", ["CalmMind"], "Jolly"),
+        ),
+        ["team 1234", "team 1234", "move 1, move 1", "move 1, move 2", "move 1, move 1", "move 2, move 1", "move 1, switch 3", "move 2, move 2"],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(ITEM_START_CASES))
+def test_item_start_on_a_holder_that_ignores_its_item_matches_showdown(case, capsys):
+    t1, t2, script = ITEM_START_CASES[case]
+    _play_scripted(range(4), "items", t1, t2, script, capsys)

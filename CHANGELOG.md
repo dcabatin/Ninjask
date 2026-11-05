@@ -8,7 +8,7 @@ A native interface for training (`ninjask.Batch`, player-view legal
 choices, numeric observations), experimental exact outcome enumeration
 contributed by CalebBrody (dcabatin/Ninjask#8), and `research/` on what
 trading parity for speed would buy. Every seeded game gives the same logs,
-requests and draws as 0.3.0 except where the two fixes below apply; the
+requests and draws as 0.3.0 except where the three fixes below apply; the
 fingerprint is still `6e2f85907f97e4e9`.
 
 Upgrading an editable checkout from before 0.3.0: delete
@@ -66,6 +66,13 @@ the new `_core.abi3.so`.
   has to take, and a drain or recoil from breaking such a substitute is
   rounded from the x.5. The engine rounded the damage down. The
   projection shows the half (`"hp": 30.5`).
+- An item handed to a Pokémon that ignores its item (Klutz, Magic Room)
+  by Trick, Recycle, Symbiosis or the like still runs its Start, as in
+  Showdown: a Metronome adds its volatile, a White Herb on a lowered stat
+  is used up (without resetting it), and a Choice item clears an old
+  Choice lock. The engine skipped them. At switch-in an ignored item
+  still does nothing. Found by the large reference run in 1 of 5,000
+  synthetic games (a Klutz Golurk Tricking away a Metronome).
 
 ### Changed
 

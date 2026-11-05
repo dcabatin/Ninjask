@@ -138,7 +138,7 @@ impl Battle {
                     self.air_lock_on_switch_in(r);
                     self.run_start(r)
                 }
-                SwitchInHandler::Item => self.item_on_start(r),
+                SwitchInHandler::Item => self.item_on_switch_in(r),
                 SwitchInHandler::WhiteHerb => self.white_herb_check(r),
                 SwitchInHandler::Opportunist => self.opportunist_release(r),
                 SwitchInHandler::ToxicSpikes => self.toxic_spikes_switch_in(r),
