@@ -6,38 +6,50 @@ use arrayvec::ArrayVec;
 use serde_json::{json, Value};
 
 use super::log::secret_health;
-use super::{Battle, MonRef, UNAVAILABLE};
+use super::{Battle, MonRef};
 use crate::dex::types::*;
 use crate::state::*;
 
 impl Battle {
-    /// Submit a choice for a side, in Showdown's syntax. When both sides
-    /// have chosen, the turn (or preview, or switch phase) runs.
+    /// Submit a choice for a side, in Showdown's syntax (`Battle.choose`).
+    /// When both sides have chosen, the turn (or preview, or switch phase)
+    /// runs. A side that has chosen may choose again until then, which
+    /// replaces its choice (the format has Cancel Mod); a refused choice
+    /// leaves it with none, and one made while a hidden trap or disable could
+    /// have been in play can't be replaced (see [`choose_text`]).
     pub fn choose(&mut self, s: usize, input: &str) -> Result<(), String> {
         if self.ended {
-            return Err("The battle is over".into());
+            return Err("Can't do anything: The game is over".into());
         }
-        match self.request {
-            RequestState::TeamPreview => {
-                let order = self.parse_team_choice(s, input)?;
-                self.sides[s].team_preview_choice = Some(order);
-            }
+        let has_request = match self.request {
+            RequestState::TeamPreview => true,
             RequestState::Move | RequestState::Switch => {
-                if !self.side_needs_choice(s) {
-                    return Err("There is nothing for you to choose right now".into());
-                }
-                let choice = match self.parse_choice(s, input) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        if e.starts_with(UNAVAILABLE) {
-                            self.record_reveal(s, input);
-                        }
-                        return Err(e);
-                    }
-                };
-                self.sides[s].choice = Some(choice);
+                self.side_needs_choice(s) || self.sides[s].choice.is_some()
             }
-            RequestState::Ended => return Err("The battle is over".into()),
+            RequestState::Ended => false,
+        };
+        if !has_request {
+            return Err("Can't do anything: It's not your turn".into());
+        }
+        if self.sides[s].cant_undo {
+            return Err(
+                "Can't undo: A trapping/disabling effect would cause undo to leak information"
+                    .into(),
+            );
+        }
+        // clearChoice
+        self.sides[s].choice = None;
+        self.sides[s].team_preview_choice = None;
+        let reading = self.read_choice(s, input);
+        self.sides[s].cant_undo = reading.cant_undo;
+        for (slot, what) in reading.reveals {
+            self.record_reveal(s, slot, what);
+        }
+        match reading.result? {
+            super::choose_text::Chosen::Team(order) => {
+                self.sides[s].team_preview_choice = Some(order)
+            }
+            super::choose_text::Chosen::Slots(choice) => self.sides[s].choice = Some(choice),
         }
         if self.all_choices_done() {
             self.commit();
@@ -45,36 +57,22 @@ impl Battle {
         Ok(())
     }
 
-    /// Record what an "[Unavailable choice]" revealed: the first slot whose
-    /// part was refused.
-    fn record_reveal(&mut self, s: usize, input: &str) {
-        let parts: Vec<&str> = input.split(',').map(|p| p.trim()).collect();
-        for slot in 0..self.sides[s].n_active {
-            let part = parts.get(slot).copied().unwrap_or("");
-            if let Err(e) = self.parse_slot_choice(s, slot, part) {
-                if e.starts_with(UNAVAILABLE) {
-                    let what = if e.contains("trapped") {
-                        Reveal::Trapped
-                    } else {
-                        Reveal::Disabled
-                    };
-                    let rqid = self.rqid;
-                    let side = &mut self.sides[s];
-                    if side.reveals_rqid != rqid {
-                        side.reveals.clear();
-                        side.reveals_rqid = rqid;
-                    }
-                    if !side.reveals.contains(&(slot, what)) {
-                        side.reveals.push((slot, what));
-                    }
-                }
-                break;
-            }
+    /// Remember what a refused choice ("[Unavailable choice]") revealed for
+    /// the current request, which the next request shows.
+    fn record_reveal(&mut self, s: usize, slot: usize, what: Reveal) {
+        let rqid = self.rqid;
+        let side = &mut self.sides[s];
+        if side.reveals_rqid != rqid {
+            side.reveals.clear();
+            side.reveals_rqid = rqid;
+        }
+        if !side.reveals.contains(&(slot, what)) {
+            side.reveals.push((slot, what));
         }
     }
 
     /// Whether a refused choice revealed this for the current request.
-    fn revealed(&self, s: usize, slot: usize, what: Reveal) -> bool {
+    pub(super) fn revealed(&self, s: usize, slot: usize, what: Reveal) -> bool {
         let side = &self.sides[s];
         side.reveals_rqid == self.rqid && side.reveals.contains(&(slot, what))
     }
@@ -102,344 +100,7 @@ impl Battle {
         (0..2).all(|s| !self.side_needs_choice(s))
     }
 
-    fn parse_team_choice(&self, s: usize, input: &str) -> Result<Vec<usize>, String> {
-        let input = input.trim();
-        let rest = input
-            .strip_prefix("team")
-            .ok_or("expected a team choice")?
-            .trim();
-        let n = self.sides[s].mons.len();
-        let picks: Vec<usize> = if rest.contains(',') || rest.contains(' ') {
-            rest.split([',', ' '])
-                .filter(|x| !x.is_empty())
-                .map(|x| x.parse::<usize>().unwrap_or(0))
-                .collect()
-        } else {
-            rest.chars()
-                .map(|c| c.to_digit(10).unwrap_or(0) as usize)
-                .collect()
-        };
-        let want = self.dex.format.picked_team_size.unwrap_or(n).min(n);
-        let mut order = Vec::new();
-        for p in picks {
-            if p == 0 || p > n {
-                return Err(format!("Can't choose for Team Preview: invalid slot {p}"));
-            }
-            if order.contains(&(p - 1)) {
-                return Err("Can't choose for Team Preview: duplicate slot".into());
-            }
-            order.push(p - 1);
-        }
-        // Showdown fills in the rest in team order.
-        for i in 0..n {
-            if order.len() >= want {
-                break;
-            }
-            if !order.contains(&i) {
-                order.push(i);
-            }
-        }
-        order.truncate(want);
-        Ok(order)
-    }
-
-    fn parse_choice(&self, s: usize, input: &str) -> Result<Vec<SlotChoice>, String> {
-        let side = &self.sides[s];
-        let n = side.n_active;
-        let parts: Vec<&str> = input.split(',').map(|p| p.trim()).collect();
-        let mut out = Vec::new();
-        let mut switching: Vec<usize> = Vec::new();
-        let mut mega = false;
-        for slot in 0..n {
-            let part = parts.get(slot).copied().unwrap_or("");
-            let choice = self.parse_slot_choice(s, slot, part)?;
-            match choice {
-                SlotChoice::Switch { index } => {
-                    if switching.contains(&index) {
-                        return Err(format!(
-                            "Can't switch: The Pokémon in slot {} can only switch in once",
-                            index + 1
-                        ));
-                    }
-                    switching.push(index);
-                }
-                SlotChoice::Move { mega: true, .. } => {
-                    if mega {
-                        return Err("Can't move: You can only Mega-Evolve once per battle".into());
-                    }
-                    mega = true;
-                }
-                _ => {}
-            }
-            out.push(choice);
-        }
-        if self.request == RequestState::Switch {
-            // Fill as many forced slots as possible (Showdown rejects passing otherwise).
-            let forced: Vec<usize> = (0..n).filter(|&sl| self.force_switch[s][sl]).collect();
-            let bench = (n..side.mons.len())
-                .filter(|&i| !side.mons[i].fainted)
-                .count();
-            if switching.len() < forced.len().min(bench) {
-                return Err("Can't pass: You need to switch in a Pokémon".into());
-            }
-        }
-        Ok(out)
-    }
-
-    fn parse_slot_choice(&self, s: usize, slot: usize, part: &str) -> Result<SlotChoice, String> {
-        let side = &self.sides[s];
-        let words: Vec<&str> = part.split_whitespace().collect();
-        let kind = words.first().copied().unwrap_or("default");
-        let mon_ref = (s, slot);
-        let fainted_or_empty = self
-            .active(s, slot)
-            .map(|r| self.mon(r).fainted)
-            .unwrap_or(true);
-        if self.request == RequestState::Switch {
-            if !self.force_switch[s][slot] {
-                return Ok(SlotChoice::Pass);
-            }
-            if side.revival[slot] {
-                // Revival Blessing: any fainted teammate, even one still in
-                // its slot; with no target given, the first fainted one.
-                return match kind {
-                    "switch" | "default" => {
-                        let idx = match words.get(1) {
-                            None => side
-                                .mons
-                                .iter()
-                                .position(|m| m.fainted)
-                                .ok_or("Can't switch: no fainted Pokémon")?,
-                            Some(w) => match w.parse::<usize>() {
-                                Ok(k) if k >= 1 && k <= side.mons.len() => k - 1,
-                                _ => side
-                                    .mons
-                                    .iter()
-                                    .position(|m| to_id(&m.name) == to_id(w))
-                                    .ok_or_else(|| format!("Can't switch: invalid Pokémon {w}"))?,
-                            },
-                        };
-                        if !side.mons[idx].fainted {
-                            return Err(
-                                "Can't switch: You have to pass to a fainted Pokémon".into()
-                            );
-                        }
-                        Ok(SlotChoice::Switch { index: idx })
-                    }
-                    "pass" => Ok(SlotChoice::Pass),
-                    _ => Err(format!("Can't {kind}: You need a switch response")),
-                };
-            }
-            return match kind {
-                "switch" => self.parse_switch_target(s, words.get(1).copied()),
-                "pass" | "default" => {
-                    if kind == "default" {
-                        if let Some(i) =
-                            (side.n_active..side.mons.len()).find(|&i| !side.mons[i].fainted)
-                        {
-                            return Ok(SlotChoice::Switch { index: i });
-                        }
-                    }
-                    Ok(SlotChoice::Pass)
-                }
-                _ => Err(format!("Can't {kind}: You need a switch response")),
-            };
-        }
-        if fainted_or_empty {
-            return Ok(SlotChoice::Pass);
-        }
-        if let Some(lock) = self.locked_move(mon_ref) {
-            // The request offers only the locked move, without a target, and
-            // traps the Pokémon; Showdown ignores "mega" here.
-            let (name, id) = match lock {
-                crate::moves::LockedMove::Recharge => {
-                    ("Recharge".to_string(), "recharge".to_string())
-                }
-                crate::moves::LockedMove::Move(m) => {
-                    (self.dex.mv(m).name.clone(), self.dex.mv(m).id.clone())
-                }
-            };
-            return match kind {
-                "move" | "default" => {
-                    if kind == "move" {
-                        let w = words.get(1).copied().ok_or("Can't move: no move given")?;
-                        if w != "1" && to_id(w) != id {
-                            return Err(format!(
-                                "Can't move: Your {} doesn't have a move matching {w}",
-                                self.mon(mon_ref).name
-                            ));
-                        }
-                        if words.iter().skip(2).any(|w| w.parse::<i8>().is_ok()) {
-                            return Err(format!(
-                                "Can't move: You can't choose a target for {name}"
-                            ));
-                        }
-                    }
-                    Ok(SlotChoice::Move {
-                        slot: 0,
-                        target: 0,
-                        mega: false,
-                    })
-                }
-                "switch" => Err("Can't switch: The active Pokémon is trapped".into()),
-                "pass" => Err("Can't pass: Your Pokémon must act".into()),
-                other => Err(format!("Unrecognized choice {other}")),
-            };
-        }
-        match kind {
-            "pass" => Err("Can't pass: Your Pokémon must act".into()),
-            // "[Unavailable choice]" when the request hid the trap.
-            "switch" if self.mon(mon_ref).trapped != Trapped::No => {
-                let shown = self.mon(mon_ref).trapped == Trapped::Yes
-                    || !self.is_last_active(mon_ref)
-                    || self.revealed(s, slot, Reveal::Trapped);
-                let prefix = if shown { "" } else { UNAVAILABLE };
-                Err(format!(
-                    "{prefix}Can't switch: The active Pokémon is trapped"
-                ))
-            }
-            "switch" => self.parse_switch_target(s, words.get(1).copied()),
-            "move" | "default" => {
-                // Showdown `chooseMove`, in its order. "default" is autoChoose.
-                let m = self.mon(mon_ref);
-                let auto = kind == "default";
-                let mut target: i8 = 0;
-                let mut mega = false;
-                for w in words.iter().skip(2) {
-                    if let Ok(t) = w.parse::<i8>() {
-                        target = t;
-                    } else if *w == "mega" {
-                        mega = true;
-                    } else {
-                        return Err(format!("Can't move: unknown modifier {w}"));
-                    }
-                }
-                let usable: Vec<usize> = (0..m.moves.len())
-                    .filter(|&i| self.move_usable(mon_ref, i))
-                    .collect();
-                // The request's moves: all of them, or Struggle alone when it
-                // shows none usable (Imprison's hidden disables aside).
-                let shown: Vec<usize> = (0..m.moves.len())
-                    .filter(|&i| !self.move_shown_disabled(mon_ref, i))
-                    .collect();
-                // The chosen request move; `None` is the request's Struggle.
-                let chosen = if shown.is_empty() {
-                    if !auto {
-                        let w = words.get(1).copied().ok_or("Can't move: no move given")?;
-                        if w.parse::<usize>().is_ok_and(|k| k != 1) {
-                            return Err(format!(
-                                "Can't move: Your {} doesn't have a move {w}",
-                                m.name
-                            ));
-                        } else if w.parse::<usize>().is_err() && to_id(w) != "struggle" {
-                            return Err(format!(
-                                "Can't move: Your {} doesn't have a move matching {w}",
-                                m.name
-                            ));
-                        }
-                    }
-                    None
-                } else if auto {
-                    Some(usable.first().copied().unwrap_or(shown[0]))
-                } else {
-                    let w = words.get(1).copied().ok_or("Can't move: no move given")?;
-                    Some(match w.parse::<usize>() {
-                        Ok(k) if k >= 1 && k <= m.moves.len() => k - 1,
-                        Ok(_) => {
-                            return Err(format!(
-                                "Can't move: Your {} doesn't have a move {w}",
-                                m.name
-                            ))
-                        }
-                        Err(_) => {
-                            let id = to_id(w);
-                            m.moves
-                                .iter()
-                                .position(|ms| self.dex.mv(ms.id).id == id)
-                                .ok_or_else(|| {
-                                    format!(
-                                        "Can't move: Your {} doesn't have a move matching {w}",
-                                        m.name
-                                    )
-                                })?
-                        }
-                    })
-                };
-                // Targeting, by the request move's target type (autoChoose
-                // leaves the target to resolveAction).
-                let (name, tt) = match chosen {
-                    Some(i) => {
-                        let mv = self.dex.mv(m.moves[i].id);
-                        (mv.name.as_str(), self.move_target_at_choice(mon_ref, mv))
-                    }
-                    None => ("Struggle", Target::RandomNormal),
-                };
-                if auto {
-                    target = 0;
-                } else if self.sides[s].n_active > 1 && tt.needs_choice() {
-                    if !self.valid_target_loc(s, slot, target, tt) {
-                        if target == 0 {
-                            return Err(format!("Can't move: {name} needs a target"));
-                        }
-                        return Err(format!("Can't move: Invalid target for {name}"));
-                    }
-                } else if target != 0 {
-                    return Err(format!("Can't move: You can't choose a target for {name}"));
-                }
-                // With no usable move, whatever was chosen is Struggle at a
-                // random target, and "mega" is ignored, unchecked.
-                let Some(idx) = chosen.filter(|_| !usable.is_empty()) else {
-                    return Ok(SlotChoice::Move {
-                        slot: STRUGGLE,
-                        target: 0,
-                        mega: false,
-                    });
-                };
-                if !self.move_usable(mon_ref, idx) {
-                    // "[Unavailable choice]" when the request showed the move
-                    // usable (hidden by Imprison), "[Invalid choice]" otherwise.
-                    let hidden = !self.move_shown_disabled(mon_ref, idx)
-                        && !self.revealed(s, slot, Reveal::Disabled);
-                    let prefix = if hidden { UNAVAILABLE } else { "" };
-                    return Err(format!(
-                        "{prefix}Can't move: {}'s {name} is disabled",
-                        m.name
-                    ));
-                }
-                if mega && (self.can_mega_evo(mon_ref).is_none() || self.sides[s].mega_used) {
-                    return Err(format!("Can't move: {} can't mega evolve", m.name));
-                }
-                Ok(SlotChoice::Move {
-                    slot: idx,
-                    target,
-                    mega,
-                })
-            }
-            other => Err(format!("Unrecognized choice {other}")),
-        }
-    }
-
-    fn parse_switch_target(&self, s: usize, word: Option<&str>) -> Result<SlotChoice, String> {
-        let side = &self.sides[s];
-        let w = word.ok_or("Can't switch: no Pokémon given")?;
-        let idx = match w.parse::<usize>() {
-            Ok(k) if k >= 1 && k <= side.mons.len() => k - 1,
-            _ => side
-                .mons
-                .iter()
-                .position(|m| to_id(&m.name) == to_id(w))
-                .ok_or_else(|| format!("Can't switch: invalid Pokémon {w}"))?,
-        };
-        if idx < side.n_active {
-            return Err("Can't switch: You can't switch to an active Pokémon".into());
-        }
-        if side.mons[idx].fainted {
-            return Err("Can't switch: You can't switch to a fainted Pokémon".into());
-        }
-        Ok(SlotChoice::Switch { index: idx })
-    }
-
-    fn move_usable(&self, r: MonRef, idx: usize) -> bool {
+    pub(super) fn move_usable(&self, r: MonRef, idx: usize) -> bool {
         !self.move_disabled(r, idx)
     }
 
@@ -478,8 +139,40 @@ impl Battle {
         self.dex.mega_forme(m.item?, m.base_species)
     }
 
-    /// The request a side should answer now, in Showdown's JSON shape.
+    /// Whether `s` has something to decide in the current request, whether
+    /// or not it has chosen already (Showdown's `requests[i]` before the
+    /// waiting ones are filled in).
+    fn has_request(&self, s: usize) -> bool {
+        match self.request {
+            RequestState::Ended => false,
+            RequestState::TeamPreview => true,
+            RequestState::Switch => self.force_switch[s].iter().any(|&f| f),
+            RequestState::Move => self.side_has_actives(s),
+        }
+    }
+
+    /// The request as Showdown sends it (`Battle.makeRequest`), as JSON.
     pub fn request_json(&self, s: usize) -> Option<Value> {
+        let mut request = self.request_json_without_cancel(s)?;
+        // With Cancel Mod a request can be answered again until the other
+        // side has answered theirs, so `noCancel` is for a request that is
+        // alone (the other side waits).
+        if request.get("wait").is_none() && !(self.has_request(0) && self.has_request(1)) {
+            request["noCancel"] = json!(true);
+        }
+        // A refused choice that gave something away has the request sent
+        // again with `update` set, and it stays set.
+        let side = &self.sides[s];
+        if request.get("wait").is_none()
+            && side.reveals_rqid == self.rqid
+            && !side.reveals.is_empty()
+        {
+            request["update"] = json!(true);
+        }
+        Some(request)
+    }
+
+    fn request_json_without_cancel(&self, s: usize) -> Option<Value> {
         let side_data = self.side_request_data(s);
         match self.request {
             RequestState::Ended => None,
@@ -535,10 +228,19 @@ impl Battle {
                             let mv = self.dex.mv(ms.id);
                             json!({
                                 "move": mv.name, "id": mv.id, "pp": ms.pp, "maxpp": ms.max_pp,
-                                "target": self.move_target_at_choice(r, mv).id(), "disabled": self.move_shown_disabled(r, i),
+                                "target": self.move_target_at_choice(r, mv).id(), "disabled": self.request_move_disabled(r, i),
                             })
                         })
                         .collect();
+                    // A refused choice of a move changed its entry: disabled,
+                    // with an empty `disabledSource` (`getMoves` gives its
+                    // entries none, so the update sets it to "").
+                    for (i, mv) in moves.iter_mut().enumerate() {
+                        if self.revealed(s, slot, Reveal::Move(i as u8)) {
+                            mv["disabled"] = json!(true);
+                            mv["disabledSource"] = json!("");
+                        }
+                    }
                     // A refused choice revealed the stored disabled flags
                     // (updateDisabledRequest).
                     if self.revealed(s, slot, Reveal::Disabled) {
@@ -549,7 +251,7 @@ impl Battle {
                         }
                     }
                     // getMoveRequestData: with no move shown usable, Struggle is the only one.
-                    if (0..m.moves.len()).all(|i| self.move_shown_disabled(r, i)) {
+                    if (0..m.moves.len()).all(|i| self.request_move_disabled(r, i)) {
                         moves = vec![
                             json!({"move": "Struggle", "id": "struggle", "target": "randomNormal", "disabled": false}),
                         ];
@@ -591,6 +293,17 @@ impl Battle {
                 Some(json!({"active": active, "side": side_data, "rqid": self.rqid}))
             }
         }
+    }
+
+    /// A move's `disabled` in the request (`getMoves`). A Pokémon that fainted
+    /// this turn is not active when the end-of-turn pass runs, so its moves
+    /// show the flags that pass left on them last time (`store_disabled_moves`).
+    pub(crate) fn request_move_disabled(&self, r: MonRef, idx: usize) -> bool {
+        let m = self.mon(r);
+        if m.fainted {
+            return m.moves[idx].disabled || m.moves[idx].pp == 0;
+        }
+        self.move_shown_disabled(r, idx)
     }
 
     fn side_request_data(&self, s: usize) -> Value {
@@ -725,7 +438,8 @@ impl Battle {
             if PLAYER {
                 !player_struggle
                     && !(self.move_shown_disabled(r, i)
-                        || (revealed_disabled && m.moves[i].disabled))
+                        || (revealed_disabled && m.moves[i].disabled)
+                        || self.revealed(s, slot, Reveal::Move(i as u8)))
             } else {
                 !(self.move_disabled_openly(r, i) || (imprison && self.move_imprisoned(r, i)))
             }

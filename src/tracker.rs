@@ -593,6 +593,8 @@ impl Tracker {
                 for side in self.sides.iter_mut() {
                     side.mons.retain(|m| m.seen);
                 }
+                // The snapshots name Pokémon by position, which this moves.
+                self.switch_snapshots = Default::default();
             }
             "poke" => self.on_poke(&l),
             "showteam" => self.on_showteam(raw),
@@ -1119,7 +1121,7 @@ impl Tracker {
                     }
                     Some(LockedMove::Recharge) => {}
                     // With no move shown usable the request shows only Struggle.
-                    None if (0..em.moves.len()).all(|j| b.move_shown_disabled((me, i), j)) => {}
+                    None if (0..em.moves.len()).all(|j| b.request_move_disabled((me, i), j)) => {}
                     None => {
                         for ms in &em.moves {
                             if let Some(mv) = m.moves.iter_mut().find(|mv| mv.id == ms.id) {
@@ -2794,7 +2796,11 @@ impl Tracker {
         let species_id = self.dex.species_id(species);
         let side = &mut self.sides[s];
         // The entry the slot's switch line went to, wherever it is now.
-        let snapshot = self.switch_snapshots[s].get(slot).cloned().flatten();
+        let snapshot = self.switch_snapshots[s]
+            .get(slot)
+            .cloned()
+            .flatten()
+            .filter(|(k, _)| *k < side.mons.len());
         let current = snapshot
             .as_ref()
             .map(|(k, _)| *k)

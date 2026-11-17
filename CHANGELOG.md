@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+## 0.4.1 (2026-11-17)
+
+Fixes from a new round of fuzzing: choice handling, which no earlier check
+reached, and the API with malformed input. Every seeded game gives the same
+logs and random draws as 0.4.0. The fingerprint moved from
+`fb8b1d107db9f213` to `b0fd9321971e9d79`: the logs and draws hash the same,
+the requests hash differs because a request alone now carries `noCancel` (see
+below).
+
+### Fixed
+
+- **Choices are read as Showdown reads them** (`src/battle/choose_text.rs`, a
+  port of `Side.choose`). `scripts/check_reference.py` sends each side one
+  legal choice, so the engine's reading of anything else had never been
+  compared. The new `scripts/check_choices.py` sends both simulators
+  refused, repeated, incomplete and malformed choices (about 250,000
+  inputs in 5,000 games, on pool, random and trap/Imprison teams) and
+  compares acceptance, error text, the updated request and the turn's
+  outcome. It found, all now matching Showdown:
+  - A side may choose again before the other has (the format has Cancel
+    Mod): the new choice replaces the old. The engine refused it ("nothing
+    for you to choose"). A refused choice leaves the side with none, and a
+    choice made while a hidden trap or Imprison could have been in play can't
+    be replaced ("Can't undo").
+  - A choice that left an active Pokémon without an action (`move 1 1` with
+    two active) was accepted, the other defaulting; one with more parts than
+    active Pokémon was accepted, the extras ignored. Both are refused.
+    A fainted active Pokémon is passed over, so one part for the Pokémon left
+    is a whole choice.
+  - The grammar: modifiers and a target in any order, "Conflicting
+    arguments", names and numbers as Showdown reads them, team preview
+    orders (brackets, commas, filling in), `skip`, `auto`, `testfight`, and
+    the error messages.
+  - The first refusal of a disabled move is "[Unavailable choice]" and marks
+    the move in the request (`disabled`, `disabledSource`), also when the
+    request showed it disabled.
+- **Requests.** A request with no counterpart (the other side has none)
+  carries `noCancel: true`; one updated by a refusal carries `update: true`.
+  A Pokémon that fainted this turn shows the disabled flags it had, and
+  is not the last active, so it gets no `maybeDisabled`.
+- Instruct repeating Endure or Protect in the turn it was used printed the
+  start line again and ran a sort Showdown doesn't (`addVolatile` has nothing
+  to add). Found by `check_chaos.py` (seed 9202, game 64).
+- `Battle.from_projection` took a Ditto transformed into a Mega as the
+  side's Mega Evolution, so its teammate's real Mega Evolution was refused,
+  and panicked (divide by zero) on a projection with `maxhp` 0 or out of
+  range, or `hp` above it. Both are refused with a `ValueError`.
+- `Tracker.feed` panicked on a `replace` line after `clearpoke` (never in a
+  real log).
+
 ## 0.4.0 (2026-11-05)
 
 A native interface for training (`ninjask.Batch`, player-view legal

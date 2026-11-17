@@ -97,6 +97,7 @@ impl Battle {
                 let mut new_actions: arrayvec::ArrayVec<Action, { 4 * MAX_ACTIVE }> =
                     arrayvec::ArrayVec::new();
                 for s in 0..2 {
+                    self.sides[s].cant_undo = false;
                     if let Some(choice) = self.sides[s].choice.take() {
                         for (slot, c) in choice.into_iter().enumerate() {
                             let Some(r) = self.active(s, slot) else {

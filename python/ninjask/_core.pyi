@@ -86,7 +86,16 @@ class Battle:
         side has no request (it is not its turn to choose; see `needs_choice`)."""
     def needs_choice(self, side: str) -> bool: ...
     def choose(self, side: str, choice: str) -> None:
-        """Submit a choice; raises ValueError with Showdown's message if invalid."""
+        """Submit a choice; raises ValueError with Showdown's message if invalid.
+
+        The text is read as Showdown reads it: parts separated by commas, one
+        per active Pokémon (a fainted one is passed over, so one part for the
+        Pokémon left is enough), and a choice that leaves a Pokémon without an
+        action is refused ("Incomplete choice"). A side may choose again until
+        the other has chosen, which replaces its choice (Showdown's Cancel
+        Mod); a refused choice leaves it with none; and one made while a hidden
+        trap or disable could have been in play can't be replaced ("Can't
+        undo"). When both sides have chosen, the turn runs."""
     def legal_choices(self, side: str) -> list[str]:
         """The choices the side's request offers, in Showdown syntax: what
         `ninjask.choices` lists from the request (ally targets included), in

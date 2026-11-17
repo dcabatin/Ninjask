@@ -102,7 +102,18 @@ fn import_mon(dex: &Dex, v: &Value, position: usize, stamp: &mut u32) -> Result<
         }
     }
     let ss = &v["storedStats"];
-    let maxhp = v["maxhp"].as_u64().unwrap_or(1) as u16;
+    // HP arithmetic divides by max HP, so a projection that names none (or
+    // one beyond what the engine stores) is refused here instead of panicking
+    // later in play.
+    let maxhp = v["maxhp"]
+        .as_u64()
+        .and_then(|m| u16::try_from(m).ok())
+        .filter(|&m| m > 0)
+        .ok_or_else(|| "maxhp must be 1 to 65535".to_string())?;
+    let hp = v["hp"].as_u64().unwrap_or(0);
+    if hp > maxhp as u64 {
+        return Err(format!("hp {hp} exceeds maxhp {maxhp}"));
+    }
     let stats = [
         maxhp,
         ss["atk"].as_u64().unwrap_or(0) as u16,
@@ -259,7 +270,7 @@ fn import_mon(dex: &Dex, v: &Value, position: usize, stamp: &mut u32) -> Result<
         nature_minus: nature.minus,
         points,
         stats,
-        hp: v["hp"].as_u64().unwrap_or(0) as u16,
+        hp: hp as u16,
         maxhp,
         status,
         status_time: st["time"].as_u64().unwrap_or(0) as u8,
@@ -341,7 +352,8 @@ fn import_mon(dex: &Dex, v: &Value, position: usize, stamp: &mut u32) -> Result<
         force_switch_flag: false,
         switch_from_move: None,
         skip_before_switch_out: false,
-        mega_evolved: dex.species(species).is_mega,
+        // A Pokémon transformed into a Mega (Ditto) has not Mega Evolved.
+        mega_evolved: dex.species(species).is_mega && v["transformed"].as_bool() != Some(true),
         // Recomputed after import (the projection doesn't hold them).
         trapped: Trapped::No,
         maybe_trapped: false,
@@ -496,7 +508,7 @@ impl Battle {
                 }
                 crate::projection::volatiles::import_slot_conds(&mut b.slot_conds[s][i], conds);
             }
-            side.mega_used = mons.iter().any(|m: &Mon| dex.species(m.species).is_mega);
+            side.mega_used = mons.iter().any(|m: &Mon| m.mega_evolved);
             side.mons = mons;
             side.pokemon_left = sv["pokemonLeft"].as_u64().unwrap_or(0) as usize;
             side.total_fainted = sv["totalFainted"].as_u64().unwrap_or(0) as u8;

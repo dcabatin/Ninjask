@@ -35,7 +35,10 @@ impl Battle {
     /// position on its side.
     pub fn is_last_active(&self, (s, slot): MonRef) -> bool {
         let side = &self.sides[s];
+        // `isLastActive`: a fainted Pokémon has `isActive` cleared, though it
+        // stays in its slot until replaced.
         side.mons[slot].is_active
+            && !side.mons[slot].fainted
             && (slot + 1..side.n_active).all(|i| side.mons.get(i).is_none_or(|m| m.fainted))
     }
 

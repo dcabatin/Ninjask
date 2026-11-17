@@ -96,6 +96,7 @@ MIXED = [
     (36, 1128, "wide"),  # Liquid Voice Perish Song into Dry Skin
     (41, 4691, "mixed"),  # no Pressure PP from a fainted Future Sight target
     (42, 5377, "wide"),  # dragIn's DragOut: Guard Dog gained by Wandering Spirit
+    (9202, 64, "mixed"),  # Instruct repeating Endure or Protect: the volatile is already there
 ]
 
 

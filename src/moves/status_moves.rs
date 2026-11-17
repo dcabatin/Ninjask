@@ -91,10 +91,15 @@ impl Battle {
                 MoveKind::Protect(p) => {
                     // The protect volatile (TryAddVolatile, then its start),
                     // then onHit adds or restarts 'stall'.
-                    self.try_add_volatile_sort(t);
-                    self.mon_mut(t).vol.protect = Some(p);
-                    self.stamp_volatile(t, ResidualVol::Protect);
-                    log_line!(self, "|-singleturn|{ti}|{}", p.start_name());
+                    // Already protected by this move (Instruct, Copycat after
+                    // it): `addVolatile` has nothing to add, with no sort and
+                    // no start line.
+                    if self.mon(t).vol.protect != Some(p) {
+                        self.try_add_volatile_sort(t);
+                        self.mon_mut(t).vol.protect = Some(p);
+                        self.stamp_volatile(t, ResidualVol::Protect);
+                        log_line!(self, "|-singleturn|{ti}|{}", p.start_name());
+                    }
                     self.add_stall(t);
                     true
                 }
@@ -905,11 +910,15 @@ impl Battle {
             }
             MoveKind::Endure => {
                 // The volatile (TryAddVolatile, then its start), then onHit's stall.
-                self.try_add_volatile_sort(t);
-                self.mon_mut(t).vol.endure = true;
-                self.stamp_volatile(t, ResidualVol::Endure);
-                let ti = self.ident(t);
-                log_line!(self, "|-singleturn|{ti}|move: Endure");
+                // Not again when Endure already holds this turn (Instruct):
+                // `addVolatile` has nothing to add, with no sort and no line.
+                if !self.mon(t).vol.endure {
+                    self.try_add_volatile_sort(t);
+                    self.mon_mut(t).vol.endure = true;
+                    self.stamp_volatile(t, ResidualVol::Endure);
+                    let ti = self.ident(t);
+                    log_line!(self, "|-singleturn|{ti}|move: Endure");
+                }
                 self.add_stall(t);
                 true
             }

@@ -13,6 +13,7 @@ pub use state_key::BattleStateKey;
 
 mod bookkeeping;
 mod choices;
+mod choose_text;
 pub mod log;
 mod queries;
 mod queue;
@@ -308,6 +309,7 @@ impl Battle {
                 total_fainted: 0,
                 conds: SideConditions::default(),
                 choice: None,
+                cant_undo: false,
                 team_preview_choice: None,
                 reveals: Vec::new(),
                 reveals_rqid: 0,
@@ -401,6 +403,7 @@ impl Battle {
             total_fainted: 0,
             conds: SideConditions::default(),
             choice: None,
+            cant_undo: false,
             team_preview_choice: None,
             reveals: Vec::new(),
             reveals_rqid: 0,
@@ -488,6 +491,7 @@ impl Battle {
     /// Fast path for self-play: submit an already-legal structured choice.
     pub fn choose_structured(&mut self, s: usize, choice: Vec<SlotChoice>) {
         self.sides[s].choice = Some(choice);
+        self.sides[s].cant_undo = false;
         if self.all_choices_done() {
             self.commit();
         }

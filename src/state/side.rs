@@ -148,6 +148,10 @@ pub struct Side {
     pub conds: SideConditions,
     /// The choice made for the current request, if any.
     pub choice: Option<Vec<SlotChoice>>,
+    /// Showdown `choice.cantUndo`: a choice made while a hidden trap or a
+    /// hidden disable could have been in play can't be replaced, or the
+    /// refusal would leak it. Reset when the turn commits.
+    pub cant_undo: bool,
     pub team_preview_choice: Option<Vec<usize>>,
     /// The team as open team sheets show it (`|showteam|`).
     pub sheet: String,
@@ -168,6 +172,9 @@ pub enum Reveal {
     Disabled,
     /// A hidden trap (Shadow Tag).
     Trapped,
+    /// A refused choice of this move (by slot index) updated its entry in
+    /// the request: `disabled`, and the `disabledSource`.
+    Move(u8),
 }
 
 impl Side {
