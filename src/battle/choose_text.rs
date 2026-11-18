@@ -361,6 +361,15 @@ impl Reader<'_> {
         if self.state != RequestState::TeamPreview {
             return self.err("Can't choose for Team Preview: You're not in a Team Preview phase");
         }
+        // Two team parts in one input (`default, team 12`): Showdown queues both
+        // sets of `team` actions and its party ends up holding the same
+        // Pokémon twice. That corrupt roster can't be built here, where a
+        // Pokémon is one value, so the second is refused. This is the one
+        // input read differently from Showdown.
+        if !self.team.is_empty() {
+            return self
+                .err("Can't choose for Team Preview: Only one team choice per input is supported");
+        }
         let n = self.b.sides[self.s].mons.len();
         let data = data.filter(|d| !d.is_empty());
         let mut bracketed = false;
@@ -765,6 +774,19 @@ impl Reader<'_> {
             return self.err("Hack to avoid sending error messages to the client :D");
         }
         let idx = chosen.and_then(|k| req[k].1).expect("a move of its own");
+        if event == Event::Dynamax {
+            // `maxMoveDisabled`: out of PP, or a status move (Max Guard) under
+            // Taunt (Assault Vest isn't an item of this format).
+            let status = b.dex.mv(m.moves[idx].id).category == Category::Status;
+            if m.moves[idx].pp == 0 || (status && m.vol.taunt > 0) {
+                let max_name = if status {
+                    "Max Guard".to_string()
+                } else {
+                    max_move_name(&b.dex.type_names[b.dex.mv(m.moves[idx].id).type_ as usize])
+                };
+                return self.err(format!("Can't move: {name}'s {max_name} is disabled"));
+            }
+        }
         if event != Event::Dynamax && !b.move_usable(r, idx) {
             if auto {
                 return self.err("autoChoose chose a disabled move");
@@ -922,4 +944,30 @@ fn parse_move_data(data: &str) -> Result<(String, Option<i32>, Event), ()> {
         }
     }
     Ok((data, target, event))
+}
+
+/// The Max Move an attack of this type becomes (`getMaxMove`).
+fn max_move_name(type_name: &str) -> String {
+    match type_name {
+        "Normal" => "Max Strike",
+        "Fighting" => "Max Knuckle",
+        "Flying" => "Max Airstream",
+        "Poison" => "Max Ooze",
+        "Ground" => "Max Quake",
+        "Rock" => "Max Rockfall",
+        "Bug" => "Max Flutterby",
+        "Ghost" => "Max Phantasm",
+        "Steel" => "Max Steelspike",
+        "Fire" => "Max Flare",
+        "Water" => "Max Geyser",
+        "Grass" => "Max Overgrowth",
+        "Electric" => "Max Lightning",
+        "Psychic" => "Max Mindstorm",
+        "Ice" => "Max Hailstorm",
+        "Dragon" => "Max Wyrmwind",
+        "Dark" => "Max Darkness",
+        "Fairy" => "Max Starfall",
+        _ => "Max Strike",
+    }
+    .to_string()
 }

@@ -338,6 +338,8 @@ function project(battle) {
 				// Forest's Curse, Trick-or-Treat: the type getTypes() ends with.
 				addedType: p.addedType || null,
 				knownType: !!p.knownType,
+				// The types last shown (`typechange` catches it up at the turn's start).
+				apparentType: p.apparentType || null,
 				item: p.item || null,
 				// Harvest, Pickup and Recycle read it.
 				lastItem: p.lastItem || null,
@@ -361,16 +363,20 @@ function project(battle) {
 				canMegaEvo: p.canMegaEvo || null,
 				activeMoveActions: p.activeMoveActions,
 				activeTurns: p.activeTurns,
+				// The cached Speed that handler sorts read (`updateSpeed`), which can be stale.
+				speed: p.speed,
 				illusion: p.illusion ? p.illusion.set.name : null,
 				heroMessageDisplayed: !!p.heroMessageDisplayed,
 				// Per-turn flags that moves read: Assurance, Alluring Voice, Lash Out.
 				hurtThisTurn: p.hurtThisTurn ?? null,
 				statsRaisedThisTurn: !!p.statsRaisedThisTurn,
 				statsLoweredThisTurn: !!p.statsLoweredThisTurn,
-				// Avalanche, Comeuppance: the hits that dealt a damage number.
-				attackedBy: p.attackedBy.filter(a => typeof a.damageValue === 'number').map(a => ({
+				// Avalanche, Comeuppance read the hits that dealt a damage number
+				// (`numbered`); any entry makes the Pokémon's types known.
+				attackedBy: p.attackedBy.map(a => ({
 					source: a.source.side.id + ':' + a.source.set.name,
 					damage: a.damage, move: a.move, thisTurn: a.thisTurn, slot: a.slot,
+					numbered: typeof a.damageValue === 'number',
 				})),
 				// Beat Up reads the base Attack of the set's species.
 				setSpecies: p.set.species,

@@ -287,10 +287,12 @@ impl Battle {
                             "canMegaEvo": mega.map(|id| json!(self.dex.species(id).name)).unwrap_or(Value::Null),
                             "activeMoveActions": m.active_move_actions,
                             "activeTurns": m.active_turns,
+                            "speed": m.speed,
                             "illusion": m.illusion,
                             "heroMessageDisplayed": m.hero_message_displayed,
                             "addedType": (m.added_type != NO_TYPE).then(|| self.dex.type_names[m.added_type as usize].clone()),
                             "knownType": !m.vol.type_unknown,
+                            "apparentType": self.apparent_type_string(m),
                         });
                         self.project_mon_extras(m, &mut out);
                         // The volatiles with handlers, in the order they were added.

@@ -51,6 +51,28 @@ below).
   range, or `hp` above it. Both are refused with a `ValueError`.
 - `Tracker.feed` panicked on a `replace` line after `clearpoke` (never in a
   real log).
+- A foe whose species may have Shadow Tag but doesn't now (a Mega Gengar
+  after Skill Swap or Worry Seed, or a disguise as one) makes the side's
+  Pokémon `maybeTrapped`, as Showdown has it, and a switch chosen then can't
+  be undone. Found by checking `cantUndo` against Showdown on teams built for
+  it (Struggle under a hidden Imprison, and this).
+- **An imported battle now plays on exactly as the original** (about 16,000
+  round trips of battle, projection, import, random draws, log and state, all
+  identical; before, one in four drew differently). Three things the
+  projection did not hold are in it now, on Showdown's side
+  (`refsim/server.js`) and the engine's: each Pokémon's cached `speed` (which
+  switch-in sorts read and which can be stale), its `apparentType`, and the
+  `attackedBy` entries of status moves (`numbered: false`), which make a
+  Pokémon's types known at the turn's end. Every parity check compares them
+  with Showdown's now, and they match input for input.
+- A choice with the `max`/`dynamax` modifier gets Showdown's answers: its
+  target type, and "Max Guard is disabled" under Taunt.
+
+### Differs from Showdown
+
+- A choice with two `team` parts (`default, team 12`) is refused. Showdown
+  queues both sets of team actions and its party ends up holding the same
+  Pokémon twice, which can't be built here. Nothing sends it.
 
 ## 0.4.0 (2026-11-05)
 

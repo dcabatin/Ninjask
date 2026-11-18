@@ -3,6 +3,7 @@
 use crate::abilities::{compare_mod, ModHandler};
 use crate::battle::Small;
 use crate::battle::{Battle, MonRef};
+use crate::dex::types::to_id;
 use crate::kinds::{AbilityKind, ItemKind};
 use crate::state::*;
 
@@ -112,6 +113,31 @@ impl Battle {
             let m = self.mon_mut(r);
             m.trapped = Trapped::No;
             m.maybe_trapped = false;
+        }
+        // Switches would be given away if a foe might have a trapping
+        // ability: for each ability its species (as shown, under Illusion)
+        // can have but it doesn't now, `FoeMaybeTrapPokemon` runs (Showdown's
+        // endTurn, after the `MaybeTrapPokemon` event above). Shadow Tag is
+        // the only such ability the format has: its Mega Gengar, once it
+        // has lost it (Skill Swap, Worry Seed), or a disguise as it.
+        if !immune || self.mon(r).vol.type_unknown {
+            let may = self.foes_of(r).into_iter().any(|f| {
+                let species = self
+                    .mon(f)
+                    .illusion
+                    .as_ref()
+                    .and_then(|n| self.sides[f.0].mons.iter().find(|x| *x.name == **n))
+                    .map_or(self.mon(f).species, |x| x.species);
+                let current = &self.dex.ability(self.mon(f).ability).id;
+                self.dex
+                    .species(species)
+                    .abilities
+                    .iter()
+                    .any(|(_, name)| to_id(name) == "shadowtag" && to_id(name) != *current)
+            });
+            if may && !self.has_ability(r, AbilityKind::ShadowTag) {
+                self.mon_mut(r).maybe_trapped = true;
+            }
         }
     }
 

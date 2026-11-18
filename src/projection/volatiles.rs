@@ -125,6 +125,22 @@ pub(crate) fn project_ability_state(a: &AbilityState, out: &mut Map<String, Valu
 
 impl Battle {
     /// Extra fields in a Pokémon's projection.
+    /// Showdown's `apparentType`: the types last shown, joined with "/": the
+    /// stale pair of a Reflect Type or Transform that hasn't caught up, else
+    /// the Pokémon's types.
+    pub(crate) fn apparent_type_string(&self, m: &crate::state::Mon) -> String {
+        let types = m
+            .vol
+            .apparent_types
+            .map_or(m.types, |(apparent, _)| apparent);
+        types
+            .iter()
+            .filter(|&&t| t != crate::dex::types::NO_TYPE)
+            .map(|&t| self.dex.type_names[t as usize].as_str())
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
     pub(crate) fn project_mon_extras(&self, m: &crate::state::Mon, v: &mut Value) {
         if let Value::Object(o) = v {
             o.insert("hurtThisTurn".into(), json!(m.hurt_this_turn));
@@ -143,10 +159,10 @@ impl Battle {
             let attacked: Vec<Value> = m
                 .attacked_by
                 .iter()
-                .filter(|a| a.numbered)
                 .map(|a| {
                     json!({
                         "source": format!("p{}:{}", a.side + 1, a.name),
+                        "numbered": a.numbered,
                         "damage": a.damage,
                         "move": self.dex.mv(a.mv).id,
                         "thisTurn": a.this_turn,
@@ -175,7 +191,7 @@ impl Battle {
                             damage: e["damage"].as_u64()? as u32,
                             mv: dex.move_id(e["move"].as_str()?)?,
                             this_turn: e["thisTurn"].as_bool()?,
-                            numbered: true,
+                            numbered: e["numbered"].as_bool().unwrap_or(true),
                             slot: (
                                 slot.get(1)?.wrapping_sub(b'1'),
                                 slot.get(2)?.wrapping_sub(b'a'),

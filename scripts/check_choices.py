@@ -190,7 +190,7 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                 raise Divergence(f"{where}\nlogs differ:\n{diff}\nrng showdown {sd_state['prng']} engine {g.eng.rng_seed}", "log after a choice")
             fields = cr.state_diff(sd_state, eng_state)
             if fields:
-                raise Divergence(f"{where}\nstate projections differ:\n  " + "\n  ".join(fields[:20]), "state: " + fields[0].split(":")[0])
+                raise Divergence(f"{where}\nstate projections differ:\n  " + "\n  ".join(fields[:20]) + "\n      " + describe(g), "state: " + fields[0].split(":")[0])
 
         compare_state("start")
         rounds = 0
@@ -300,7 +300,7 @@ def _init_worker(verbose: bool, seed: int) -> None:
     pool = verification_teams()
     r = random.Random("synthetic")
     synthetic = [supported_test_team(FORMAT, r) for _ in range(300)]
-    focus = [t for t in focus_teams(FORMAT, FOCUS, pool + synthetic, synthetic=200, seed=seed) if len(t.split("]")) == 6]
+    focus = [t for t in focus_teams(FORMAT, FOCUS, pool + synthetic, synthetic=200, seed=seed) if 4 <= len(t.split("]")) <= 6]
     _worker.update(sim=sim, dex=engine_dex(FORMAT), teams=pool + synthetic, focus=focus, verbose=verbose)
 
 

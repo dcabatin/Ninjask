@@ -230,3 +230,94 @@ def test_a_scrambled_log_does_not_crash_the_tracker(d):
         tracker = ninjask.Tracker(d, side)
         tracker.feed(lines)
         json.loads(tracker.view())
+
+
+def _custom_games(choices, t1, t2, n, tag):
+    """Games on fixed teams, each choice sent to Showdown and the engine; returns
+    (disagreements, what Showdown answered)."""
+    import random as _random
+
+    from ninjask.refsim import RefSim, seed_from_int
+
+    d = ninjask.dex(FORMAT)
+    found: list = []
+    seen: list = []
+    with RefSim() as sim:
+        for g in range(n):
+            choices.play(sim, d, seed_from_int(g, tag), t1, t2, _random.Random(g), False, found, seen)
+    return found, seen
+
+
+def test_a_struggle_chosen_under_a_hidden_imprison_cannot_be_undone(choices):
+    """Every move of the last active is disabled by a foe's unseen Imprison: its
+    choice is Struggle, made with `cantUndo`, as Showdown has it."""
+    moves = "Imprison,Protect,ShadowBall,Recover"
+    t = lambda side: "]".join(f"{side}{i}|Alakazam||innerfocus|{moves}|Timid|||||50|" for i in range(6))  # noqa: E731
+    found, seen = _custom_games(choices, t("x"), t("y"), 40, "undo")
+    assert not found, found[:2]
+    assert any("Can't undo" in s for s in seen)
+
+
+def test_a_foe_that_lost_shadow_tag_still_makes_a_switch_uncancellable(choices):
+    """Showdown marks `maybeTrapped` for a foe whose species may have Shadow Tag
+    (here a Mega Gengar after Worry Seed), and a switch chosen then can't be undone."""
+    t1 = "]".join(f"x{i}|Alakazam||innerfocus|WorrySeed,SkillSwap,Recover,Psychic|Timid|||||50|" for i in range(6))
+    t2 = "]".join(f"y{i}|Gengar|gengarite|cursedbody|ShadowBall,Protect,Recover,Round|Timid|||||50|" for i in range(6))
+    found, seen = _custom_games(choices, t1, t2, 60, "gengar")
+    assert not found, found[:2]
+    assert any("Can't undo" in s for s in seen)
+
+
+def test_only_one_team_choice_per_input(d, teams):
+    battle = ninjask.Battle(d, teams[0], teams[1], seed=1)
+    for text in ("default, team 12", " team 12, team 34"):
+        with pytest.raises(ValueError, match="Only one team choice per input"):
+            battle.choose("p1", text)
+        assert battle.needs_choice("p1")
+    battle.choose("p1", "default")
+
+
+def test_an_imported_battle_draws_what_the_original_would(d, teams):
+    """The projection carries each Pokémon's cached Speed (Showdown's
+    `speed`, which can be stale and which switch-in sorts read), so a battle
+    imported at a decision uses the same random draws as the one it came from."""
+    rng = random.Random(8)
+    checked = 0
+    for g in range(24):
+        battle = ninjask.Battle(d, teams[g % len(teams)], teams[(g * 5 + 2) % len(teams)], seed=g)
+        while not battle.ended and battle.turn < 25:
+            need = [s for s in ("p1", "p2") if battle.needs_choice(s)]
+            if battle.turn >= 1 and not json.loads(battle.request(need[0])).get("teamPreview"):
+                try:
+                    imported = ninjask.Battle.from_projection(d, battle.projection(), seed=5)
+                except ValueError:
+                    imported = None
+                if imported is not None:
+                    original = battle.copy()
+                    for b in (imported, original):
+                        b.reseed(77)
+                        b.set_rng_trace(True)
+                    probe = random.Random(g * 1000 + battle.turn)
+                    for side in need:
+                        options = original.legal_choices(side)
+                        for _ in range(30):
+                            pick = probe.choice(options)
+                            try:
+                                original.choose(side, pick)
+                                break
+                            except ValueError:
+                                pass
+                        imported.choose(side, pick)
+                    draws = lambda b: [x for x in b.rng_trace() if not x.startswith("#")]  # noqa: E731
+                    assert draws(imported) == draws(original), (g, battle.turn)
+                    checked += 1
+            for side in need:
+                for _ in range(30):
+                    try:
+                        battle.choose(side, rng.choice(battle.legal_choices(side)))
+                        break
+                    except ValueError:
+                        pass
+                else:
+                    battle.choose(side, "default")
+    assert checked > 100

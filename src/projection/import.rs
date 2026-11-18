@@ -217,6 +217,22 @@ fn import_mon(dex: &Dex, v: &Value, position: usize, stamp: &mut u32) -> Result<
     }
     let mut vol = projected_volatiles(dex, vols);
     vol.type_unknown = v["knownType"].as_bool() == Some(false);
+    // A stale `apparentType` (Reflect Type, Transform) is a pair with the real
+    // types, which a silent `typechange` catches up at the next turn's start.
+    let real_types = [
+        types.first().copied().unwrap_or(0),
+        types.get(1).copied().unwrap_or(NO_TYPE),
+    ];
+    if let Some(apparent) = v["apparentType"].as_str() {
+        let shown: Vec<TypeId> = apparent.split('/').filter_map(|t| dex.type_id(t)).collect();
+        let shown = [
+            shown.first().copied().unwrap_or(0),
+            shown.get(1).copied().unwrap_or(NO_TYPE),
+        ];
+        if !apparent.is_empty() && shown != real_types {
+            vol.apparent_types = Some((shown, real_types));
+        }
+    }
     // The order the volatiles with handlers were added in.
     let charging_id = vol
         .charging
@@ -361,7 +377,9 @@ fn import_mon(dex: &Dex, v: &Value, position: usize, stamp: &mut u32) -> Result<
         active_turns: v["activeTurns"].as_u64().unwrap_or(1) as u16,
         moved_this_turn: false,
         active_move_actions: v["activeMoveActions"].as_u64().unwrap_or(1) as u16,
-        speed: 0,
+        // The cached Speed (Showdown's `pokemon.speed`), which handler sorts
+        // read and which can be stale; recomputed when the projection has none.
+        speed: v["speed"].as_i64().map_or(0, |x| x as i32),
         illusion: v["illusion"].as_str().map(str::to_string),
         hero_message_displayed: v["heroMessageDisplayed"].as_bool().unwrap_or(false),
         added_type,
@@ -528,7 +546,15 @@ impl Battle {
             }
         }
         b.mid_turn = b.request == RequestState::Switch;
+        let cached: Vec<(crate::battle::MonRef, i32)> = (0..2)
+            .flat_map(|s| (0..b.sides[s].mons.len()).map(move |i| (s, i)))
+            .filter(|&r| b.mon(r).speed != 0)
+            .map(|r| (r, b.mon(r).speed))
+            .collect();
         b.refresh_speeds();
+        for (r, speed) in cached {
+            b.mon_mut(r).speed = speed;
+        }
         // The trap pass of the turn's start, without drawing.
         for r in b.all_active() {
             b.run_trap_pokemon(r, false);
