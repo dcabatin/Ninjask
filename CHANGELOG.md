@@ -7,9 +7,9 @@
 Fixes from a new round of fuzzing: choice handling, which no earlier check
 reached, and the API with malformed input. Every seeded game gives the same
 logs and random draws as 0.4.0. The fingerprint moved from
-`fb8b1d107db9f213` to `41f8cd481eeb5caf`: the logs and draws hash the same,
-the requests hash differs because a request alone now carries `noCancel`, and a
-side's request no longer turns into "wait" once it has chosen (see below).
+`fb8b1d107db9f213` to `c826ee9bb327b2d8`: the logs and draws hash the same,
+the requests hash differs because a request alone now carries `noCancel`, a
+side's request no longer turns into "wait" once it has chosen, and requests changed in other ways (see below).
 
 ### Fixed
 

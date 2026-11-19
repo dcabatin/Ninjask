@@ -49,7 +49,7 @@ cargo run --release --example fingerprint -- data/derived/format/gen9championsvg
 ```
 
 - **A change that should not change behaviour** (a refactor, a speed-up)
-  must leave the fingerprint at `41f8cd481eeb5caf`. If it changes, the change
+  must leave the fingerprint at `c826ee9bb327b2d8`. If it changes, the change
   altered behaviour, and the reference check says where.
 - **A change that does change behaviour** must match Showdown: run
   `check_reference.py` on more games (`--games 1000`, with and without
