@@ -258,10 +258,13 @@ engine with it; all need Node.js and the Showdown checkout (see
 | --- | --- |
 | `scripts/check_reference.py` | Reference mode against Showdown, game by game. Both simulators get the same seed and the same choices. After every input it compares each log line, each side's request and the full state projection, the RNG state included. On a divergence it prints both sequences of RNG draws with their call sites. |
 | `scripts/check_choices.py` | Choice handling: the same refused, repeated, replaced, incomplete and malformed choices sent to both simulators, compared on whether each is accepted, the error text, the side's updated request and (once the turn runs) the logs and state. `check_reference.py` sends each side one legal choice per decision, so this is what covers the reading of choice strings. |
+| `scripts/check_pairs.py` | Every pair of the interaction-heavy moves, abilities and items (the chaos pools plus whatever `scripts/report_coverage.py` finds the random games rarely reach), one on each side, compared with Showdown after every input. Random teams meet a given pair of rare mechanics once in thousands of games; this meets each one on purpose. |
 | `scripts/check_chaos.py` | The same comparison on "chaos" teams: every Pokémon carries the mechanics that interact the most (Illusion, Imposter, Transform, Skill Swap, Reflect Type, Perish Song, Future Sight, Instruct, Baton Pass, Revival Blessing...), so interactions that real play reaches once in a million games come up every few dozen. `--mix wide` and `--mix mixed` draw from everything supported. Each bug it has found is replayed in `tests/python/test_chaos.py`. |
 | `cargo run --release --example fingerprint` | A hash of the logs, requests and RNG draws of 2000 seeded engine games. It must not change in a refactor that preserves behaviour. |
 | `scripts/verify_engine.py` | Outcome distributions. At sampled decision points the Showdown state is imported into the engine and one joint choice is played N times in each simulator. A χ² test of homogeneity per feature (HP, status, boosts, volatiles, fainting, field, the winner) plus an exact-support check, with false-discovery-rate control across all comparisons. `--focus ids` concentrates on named moves, abilities and items. |
 | `scripts/check_tracker.py` | The protocol tracker (below) against the true state: a player's view of its own side matches exactly, and everything it believes about the foe is true. It runs on engine games, on Showdown games (`--showdown`) and with open team sheets (`--ots`). |
+
+`NINJASK_FORMAT=gen9championsbssregmc` (singles), `gen9championsvgc2026regmb`, `gen9championsvgc2026regmcots` or a custom-game format points `check_reference.py`, `check_chaos.py` and `check_choices.py` at that format.
 
 The reference and tracker checks run on a pool of real-looking teams and on
 `--synthetic` teams: random legal teams built over every supported move,
@@ -358,7 +361,7 @@ cargo run --release --example fingerprint -- data/derived/format/gen9championsvg
 ```
 
 On the bundled fixture teams (`tests/fixtures/regmc_teams.txt`) the fingerprint is
-`b0fd9321971e9d79`. A change that preserves behaviour must leave it unchanged.
+`41f8cd481eeb5caf`. A change that preserves behaviour must leave it unchanged.
 
 The bench plays random legal games on one thread with logging off: about
 5,400 to 6,700 games/s over ten runs on one core of a 4-vCPU cloud VM (Xeon

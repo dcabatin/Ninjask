@@ -45,12 +45,19 @@ pub(super) struct Reading {
     pub result: Result<Chosen, String>,
     pub cant_undo: bool,
     pub reveals: Vec<(usize, Reveal)>,
+    /// The slots with a move in the parts read (kept when a later one is refused).
+    pub moves: Vec<usize>,
+}
+
+/// JavaScript's whitespace (`\s`, `trim`): not U+0085, but the byte order mark.
+fn js_space(c: char) -> bool {
+    c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}')
 }
 
 /// JavaScript's `parseInt(text)` (radix 10, or 16 after `0x`): the leading
 /// whitespace skipped, an optional sign, the digits at the start.
 fn js_parse_int(text: &str) -> Option<i64> {
-    let t = text.trim_start();
+    let t = text.trim_start_matches(js_space);
     let (neg, t) = match t.strip_prefix('-') {
         Some(r) => (true, r),
         None => (false, t.strip_prefix('+').unwrap_or(t)),
@@ -96,6 +103,23 @@ struct Reader<'a> {
 }
 
 impl Battle {
+    /// A Pokémon Imprison may be hiding disabled moves from (`maybeLocked`).
+    pub(super) fn maybe_locked(&self, s: usize, slot: usize) -> bool {
+        let Some(r) = self.active(s, slot) else {
+            return false;
+        };
+        self.is_last_active(r)
+            // `chooseMove` rebuilds the request data first, which sets
+            // `maybeLocked` again from `maybeDisabled`; only outside singles
+            // does a reveal also clear that.
+            && (self.sides[s].n_active == 1 || !self.revealed(s, slot, Reveal::Disabled))
+            && self.locked_move(r).is_none()
+            && self
+                .foes_of(r)
+                .into_iter()
+                .any(|f| self.mon(f).vol.imprison)
+    }
+
     /// Read `input` as side `s`'s choice (`Side.choose`, then the completeness
     /// check of `Battle.choose`).
     pub(super) fn read_choice(&self, s: usize, input: &str) -> Reading {
@@ -130,10 +154,24 @@ impl Battle {
             reveals: Vec::new(),
         };
         let result = r.run(input);
+        // The parts read, refused or not (a successful read moved them out).
+        let held = |actions: &[SlotChoice]| -> Vec<usize> {
+            actions
+                .iter()
+                .enumerate()
+                .filter(|(_, a)| matches!(a, SlotChoice::Move { .. }))
+                .map(|(i, _)| i)
+                .collect()
+        };
+        let moves = match &result {
+            Ok(Chosen::Slots(actions)) => held(actions),
+            _ => held(&r.actions),
+        };
         Reading {
             result,
             cant_undo: r.cant_undo,
             reveals: r.reveals,
+            moves,
         }
     }
 }
@@ -201,8 +239,8 @@ impl Reader<'_> {
             ));
         }
         for part in parts {
-            let (kind, data) = split_first(part.trim());
-            let data = data.trim();
+            let (kind, data) = split_first(part.trim_matches(js_space));
+            let data = data.trim_matches(js_space);
             let (kind, data) = if kind == "testfight" {
                 ("move", "testfight")
             } else {
@@ -378,7 +416,7 @@ impl Reader<'_> {
             if d.starts_with('[') && d.ends_with(']') {
                 bracketed = true;
                 team_data = if d.len() >= 2 {
-                    d[1..d.len() - 1].trim()
+                    d[1..d.len() - 1].trim_matches(js_space)
                 } else {
                     ""
                 };
@@ -566,19 +604,8 @@ impl Reader<'_> {
         true
     }
 
-    /// A Pokémon Imprison may be hiding disabled moves from (`maybeLocked`).
     fn maybe_locked(&self, slot: usize) -> bool {
-        let Some(r) = self.mon_ref(slot) else {
-            return false;
-        };
-        self.b.is_last_active(r)
-            && !self.b.revealed(self.s, slot, Reveal::Disabled)
-            && self.b.locked_move(r).is_none()
-            && self
-                .b
-                .foes_of(r)
-                .into_iter()
-                .any(|f| self.b.mon(f).vol.imprison)
+        self.b.maybe_locked(self.s, slot)
     }
 
     fn choose_move(&mut self, move_text: &str, target_loc: Option<i32>, event: Event) -> bool {
@@ -834,6 +861,14 @@ impl Reader<'_> {
         if event == Event::Mega {
             self.mega = true;
         }
+        // Singles: with Imprison possibly disabling its moves, any move chosen
+        // can't be taken back (`maybeDisabled` outlives a refusal there).
+        if self.n == 1
+            && b.is_last_active(r)
+            && b.foes_of(r).into_iter().any(|f| b.mon(f).vol.imprison)
+        {
+            self.cant_undo = true;
+        }
         self.actions.push(SlotChoice::Move {
             slot: idx,
             target: target as i8,
@@ -902,12 +937,12 @@ fn parse_move_data(data: &str) -> Result<(String, Option<i32>, Event), ()> {
         // /\s(?:-|\+)?[1-3]$/
         let target_at_end = {
             let digit = len >= 2 && ('1'..='3').contains(&chars[len - 1]);
-            if digit && chars[len - 2].is_whitespace() {
+            if digit && js_space(chars[len - 2]) {
                 Some((chars[len - 1].to_digit(10).unwrap() as i32, 2))
             } else if digit
                 && len >= 3
                 && (chars[len - 2] == '-' || chars[len - 2] == '+')
-                && chars[len - 3].is_whitespace()
+                && js_space(chars[len - 3])
             {
                 let v = chars[len - 1].to_digit(10).unwrap() as i32;
                 Some((if chars[len - 2] == '-' { -v } else { v }, 2))
@@ -923,7 +958,7 @@ fn parse_move_data(data: &str) -> Result<(String, Option<i32>, Event), ()> {
             data = chars[..len - cut]
                 .iter()
                 .collect::<String>()
-                .trim()
+                .trim_matches(js_space)
                 .to_string();
             continue;
         }

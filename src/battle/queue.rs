@@ -98,6 +98,7 @@ impl Battle {
                     arrayvec::ArrayVec::new();
                 for s in 0..2 {
                     self.sides[s].cant_undo = false;
+                    self.sides[s].choice_moves.clear();
                     if let Some(choice) = self.sides[s].choice.take() {
                         for (slot, c) in choice.into_iter().enumerate() {
                             let Some(r) = self.active(s, slot) else {

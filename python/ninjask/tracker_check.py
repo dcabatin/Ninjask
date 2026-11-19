@@ -17,6 +17,7 @@ the battle and side, so other checks can run on the same games.
 from __future__ import annotations
 
 import json
+import os
 import random
 from collections import Counter
 from collections.abc import Callable
@@ -30,7 +31,7 @@ from ninjask import focus_teams, verification_teams
 from ninjask.choices import joint_choices
 from ninjask.refsim import Battle, RefSim, seed_from_int
 
-FORMAT = "gen9championsvgc2026regmc"
+FORMAT = os.environ.get("NINJASK_FORMAT", "gen9championsvgc2026regmc")
 GAME_TYPE = load_format(FORMAT).game_type
 
 

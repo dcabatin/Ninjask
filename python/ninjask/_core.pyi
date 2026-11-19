@@ -83,7 +83,9 @@ class Battle:
         """The RNG state as Showdown prints it (reference mode), else None."""
     def request(self, side: str) -> str | None:
         """The side's current request as Showdown JSON text, or None when the
-        side has no request (it is not its turn to choose; see `needs_choice`)."""
+        side has no request. As in Showdown it stays the same after the side
+        has chosen, until the turn runs (see `needs_choice`); a side with
+        nothing to decide gets `{"wait": true, ...}`."""
     def needs_choice(self, side: str) -> bool: ...
     def choose(self, side: str, choice: str) -> None:
         """Submit a choice; raises ValueError with Showdown's message if invalid.
@@ -96,6 +98,9 @@ class Battle:
         Mod); a refused choice leaves it with none; and one made while a hidden
         trap or disable could have been in play can't be replaced ("Can't
         undo"). When both sides have chosen, the turn runs."""
+    def undo(self, side: str) -> None:
+        """Take back the side's choice (Showdown's `undoChoice`); ValueError when
+        it can't be undone ("Can't undo"). Nothing happens without a request."""
     def legal_choices(self, side: str) -> list[str]:
         """The choices the side's request offers, in Showdown syntax: what
         `ninjask.choices` lists from the request (ally targets included), in

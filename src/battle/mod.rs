@@ -282,7 +282,10 @@ impl Battle {
     fn from_team_parts(dex: Arc<Dex>, teams: [Team; 2], names: [&str; 2], mut rng: Rng) -> Battle {
         let mut sides = Vec::new();
         for (i, team) in teams.into_iter().enumerate() {
-            let Team { mut mons, sheet } = team;
+            let Team {
+                mut mons,
+                mut sheet,
+            } = team;
             // Showdown's Pokemon constructor: the set's gender, else the
             // species' fixed one, else a random draw (side by side, in team order).
             for m in mons.iter_mut() {
@@ -298,6 +301,22 @@ impl Battle {
                     m.gender.clear();
                 }
             }
+            // The open team sheet shows the gender as drawn (`pokemon.gender`),
+            // not as the set left it.
+            if mons.iter().any(|m| !m.gender.is_empty()) {
+                sheet = sheet
+                    .split(']')
+                    .zip(&mons)
+                    .map(|(set, m)| {
+                        let mut fields: Vec<&str> = set.split('|').collect();
+                        if fields.len() > 7 {
+                            fields[7] = &m.gender;
+                        }
+                        fields.join("|")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("]");
+            }
             let n = mons.len();
             sides.push(Side {
                 index: i,
@@ -310,6 +329,7 @@ impl Battle {
                 conds: SideConditions::default(),
                 choice: None,
                 cant_undo: false,
+                choice_moves: Vec::new(),
                 team_preview_choice: None,
                 reveals: Vec::new(),
                 reveals_rqid: 0,
@@ -381,12 +401,11 @@ impl Battle {
                 b.add(line);
             }
         }
-        let size = b
-            .dex
-            .format
-            .picked_team_size
-            .unwrap_or(b.sides[0].mons.len());
-        b.add(format!("|teampreview|{size}"));
+        // The size only when the format picks a subset (`pickedTeamSize`).
+        match b.dex.format.picked_team_size {
+            Some(size) => b.add(format!("|teampreview|{size}")),
+            None => b.add("|teampreview".to_string()),
+        }
         b
     }
 
@@ -404,6 +423,7 @@ impl Battle {
             conds: SideConditions::default(),
             choice: None,
             cant_undo: false,
+            choice_moves: Vec::new(),
             team_preview_choice: None,
             reveals: Vec::new(),
             reveals_rqid: 0,
@@ -492,6 +512,7 @@ impl Battle {
     pub fn choose_structured(&mut self, s: usize, choice: Vec<SlotChoice>) {
         self.sides[s].choice = Some(choice);
         self.sides[s].cant_undo = false;
+        self.sides[s].choice_moves.clear();
         if self.all_choices_done() {
             self.commit();
         }

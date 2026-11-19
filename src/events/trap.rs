@@ -116,10 +116,11 @@ impl Battle {
         }
         // Switches would be given away if a foe might have a trapping
         // ability: for each ability its species (as shown, under Illusion)
-        // can have but it doesn't now, `FoeMaybeTrapPokemon` runs (Showdown's
-        // endTurn, after the `MaybeTrapPokemon` event above). Shadow Tag is
-        // the only such ability the format has: its Mega Gengar, once it
-        // has lost it (Skill Swap, Worry Seed), or a disguise as it.
+        // can have, `FoeMaybeTrapPokemon` runs, after the `MaybeTrapPokemon`
+        // event above (Shed Shell and Run Away have cleared theirs by then).
+        // Showdown meant to skip the ability the foe has, but compares the
+        // ability's name ("Shadow Tag") with its id ("shadowtag"), so none
+        // is skipped. Shadow Tag is the only such ability the format has.
         if !immune || self.mon(r).vol.type_unknown {
             let may = self.foes_of(r).into_iter().any(|f| {
                 let species = self
@@ -128,14 +129,14 @@ impl Battle {
                     .as_ref()
                     .and_then(|n| self.sides[f.0].mons.iter().find(|x| *x.name == **n))
                     .map_or(self.mon(f).species, |x| x.species);
-                let current = &self.dex.ability(self.mon(f).ability).id;
                 self.dex
                     .species(species)
                     .abilities
                     .iter()
-                    .any(|(_, name)| to_id(name) == "shadowtag" && to_id(name) != *current)
+                    .any(|(_, name)| to_id(name) == "shadowtag")
             });
-            if may && !self.has_ability(r, AbilityKind::ShadowTag) {
+            // `singleEvent` skips an ability handler while the target ignores its own ability.
+            if may && !self.ignoring_ability(r) && !self.has_ability(r, AbilityKind::ShadowTag) {
                 self.mon_mut(r).maybe_trapped = true;
             }
         }

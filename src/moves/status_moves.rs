@@ -946,6 +946,8 @@ impl Battle {
                         if let Some(line) = self.last_move_line {
                             self.attr_move_line(line, "[still]");
                         }
+                        // NOT_FAIL: it did nothing, so no AfterMoveSecondary.
+                        self.note_not_fail(t);
                     }
                 }
                 true

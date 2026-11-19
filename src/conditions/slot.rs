@@ -160,11 +160,15 @@ impl Battle {
         }
         let m = self.mon_mut(r);
         m.hp = m.maxhp;
-        m.status = Status::None;
-        m.status_state = Status::None;
-        m.status_time = 0;
-        m.status_start_time = 0;
-        m.toxic_stage = 0;
+        // `clearStatus` does nothing without a status, so what an earlier cure
+        // left in the status state (Rest's times after a Lum Berry) stays.
+        if m.status != Status::None {
+            m.status = Status::None;
+            m.status_state = Status::None;
+            m.status_time = 0;
+            m.status_start_time = 0;
+            m.toxic_stage = 0;
+        }
         let ri = self.ident(r);
         self.add_health(format_args!("|-heal|{ri}"), r, "|[from] move: Healing Wish");
         self.slot_conds[r.0][r.1].healing_wish = None;

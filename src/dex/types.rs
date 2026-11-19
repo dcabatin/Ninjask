@@ -452,10 +452,33 @@ impl fmt::Display for Support {
 
 /// Showdown's toID.
 pub fn to_id(s: &str) -> String {
-    s.chars()
+    if s.is_ascii() {
+        return s
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+    }
+    // Showdown's `toID` lowercases the whole text first, so a letter that
+    // lowercases to ASCII counts (the Kelvin sign, a dotted capital I).
+    s.to_lowercase()
+        .chars()
         .filter(|c| c.is_ascii_alphanumeric())
-        .map(|c| c.to_ascii_lowercase())
         .collect()
+}
+
+#[cfg(test)]
+mod to_id_tests {
+    use super::to_id;
+
+    #[test]
+    fn lowercases_before_stripping_like_showdown() {
+        assert_eq!(to_id("Hidden Power"), "hiddenpower");
+        // The Kelvin sign and a dotted capital I lowercase to ASCII letters.
+        assert_eq!(to_id("\u{212a}ing's Shield"), "kingsshield");
+        assert_eq!(to_id("\u{130}ce Beam"), "icebeam");
+        assert_eq!(to_id("\u{ff11}\u{e9}"), "");
+    }
 }
 
 #[cfg(test)]

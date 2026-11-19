@@ -146,8 +146,17 @@ class Battle:
         r = self.sim.call(cmd="choose", id=self.id, side=side, choice=choice, omniscient=omniscient)
         return Observation.from_reply(r)
 
-    def state(self) -> dict:
-        return self.sim.call(cmd="state", id=self.id)
+    def undo(self, side: str, omniscient: bool = False) -> Observation:
+        r = self.sim.call(cmd="undo", id=self.id, side=side, omniscient=omniscient)
+        return Observation.from_reply(r)
+
+    def state(self, requests: bool = False) -> dict:
+        """The battle's projection; `requests` keeps each side's active
+        request under `_requests`."""
+        state = self.sim.call(cmd="state", id=self.id)
+        if not requests:
+            state.pop("_requests", None)
+        return state
 
     def inputlog(self) -> list[str]:
         return self.sim.call(cmd="inputlog", id=self.id)["inputlog"]

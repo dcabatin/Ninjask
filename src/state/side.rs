@@ -152,6 +152,10 @@ pub struct Side {
     /// hidden disable could have been in play can't be replaced, or the
     /// refusal would leak it. Reset when the turn commits.
     pub cant_undo: bool,
+    /// The slots that hold a move in the current choice, refused or not
+    /// (Showdown's `choice.actions` keeps the parts read before a refusal):
+    /// an undo reveals what hid behind them.
+    pub choice_moves: Vec<usize>,
     pub team_preview_choice: Option<Vec<usize>>,
     /// The team as open team sheets show it (`|showteam|`).
     pub sheet: String,

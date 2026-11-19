@@ -42,6 +42,7 @@ impl Battle {
         self.sides[s].team_preview_choice = None;
         let reading = self.read_choice(s, input);
         self.sides[s].cant_undo = reading.cant_undo;
+        self.sides[s].choice_moves = reading.moves;
         for (slot, what) in reading.reveals {
             self.record_reveal(s, slot, what);
         }
@@ -54,6 +55,39 @@ impl Battle {
         if self.all_choices_done() {
             self.commit();
         }
+        Ok(())
+    }
+
+    /// Showdown's `undoChoice` (a server's `/undo`): take back the side's
+    /// choice, unless it can't be undone. Undoing a move that a hidden
+    /// disable may have decided reveals the disables, as a refusal would.
+    pub fn undo_choice(&mut self, s: usize) -> Result<(), String> {
+        let has_request = match self.request {
+            RequestState::TeamPreview => true,
+            RequestState::Move | RequestState::Switch => {
+                self.side_needs_choice(s) || self.sides[s].choice.is_some()
+            }
+            RequestState::Ended => false,
+        };
+        if self.ended || !has_request {
+            return Ok(());
+        }
+        if self.sides[s].cant_undo {
+            return Err(
+                "Can't undo: A trapping/disabling effect would cause undo to leak information"
+                    .into(),
+            );
+        }
+        if self.request == RequestState::Move {
+            for slot in std::mem::take(&mut self.sides[s].choice_moves) {
+                if self.maybe_locked(s, slot) {
+                    self.record_reveal(s, slot, Reveal::Disabled);
+                }
+            }
+        }
+        self.sides[s].choice = None;
+        self.sides[s].team_preview_choice = None;
+        self.sides[s].choice_moves.clear();
         Ok(())
     }
 
@@ -182,15 +216,16 @@ impl Battle {
                     .format
                     .picked_team_size
                     .unwrap_or(self.sides[s].mons.len());
-                if self.sides[s].team_preview_choice.is_some() {
-                    return Some(json!({"wait": true, "side": side_data, "rqid": self.rqid}));
+                // `maxChosenTeamSize` is left out when the format picks no subset.
+                let mut request =
+                    json!({"teamPreview": true, "side": side_data, "rqid": self.rqid});
+                if self.dex.format.picked_team_size.is_some() {
+                    request["maxChosenTeamSize"] = json!(size);
                 }
-                Some(
-                    json!({"teamPreview": true, "maxChosenTeamSize": size, "side": side_data, "rqid": self.rqid}),
-                )
+                Some(request)
             }
             RequestState::Switch => {
-                if !self.force_switch[s].iter().any(|&f| f) || self.sides[s].choice.is_some() {
+                if !self.force_switch[s].iter().any(|&f| f) {
                     return Some(json!({"wait": true, "side": side_data, "rqid": self.rqid}));
                 }
                 let n = self.sides[s].n_active;
@@ -198,7 +233,7 @@ impl Battle {
                 Some(json!({"forceSwitch": flags, "side": side_data, "rqid": self.rqid}))
             }
             RequestState::Move => {
-                if self.sides[s].choice.is_some() || !self.side_has_actives(s) {
+                if !self.side_has_actives(s) {
                     return Some(json!({"wait": true, "side": side_data, "rqid": self.rqid}));
                 }
                 let mut active = Vec::new();
@@ -243,7 +278,7 @@ impl Battle {
                     }
                     // A refused choice revealed the stored disabled flags
                     // (updateDisabledRequest).
-                    if self.revealed(s, slot, Reveal::Disabled) {
+                    if self.sides[s].n_active > 1 && self.revealed(s, slot, Reveal::Disabled) {
                         for (mv, ms) in moves.iter_mut().zip(&m.moves) {
                             if ms.disabled {
                                 mv["disabled"] = json!(true);
@@ -251,7 +286,9 @@ impl Battle {
                         }
                     }
                     // getMoveRequestData: with no move shown usable, Struggle is the only one.
-                    if (0..m.moves.len()).all(|i| self.request_move_disabled(r, i)) {
+                    let struggle_only =
+                        (0..m.moves.len()).all(|i| self.request_move_disabled(r, i));
+                    if struggle_only {
                         moves = vec![
                             json!({"move": "Struggle", "id": "struggle", "target": "randomNormal", "disabled": false}),
                         ];
@@ -265,12 +302,16 @@ impl Battle {
                         .foes_of(r)
                         .into_iter()
                         .any(|f| self.mon(f).vol.imprison);
-                    if imprisoned_by_foe
-                        && self.is_last_active(r)
-                        && !self.revealed(s, slot, Reveal::Disabled)
-                    {
-                        entry["maybeDisabled"] = json!(true);
-                        entry["maybeLocked"] = json!(true);
+                    // In singles a refusal clears `maybeLocked` only: `maybeDisabled`
+                    // (`updateDisabledRequest`) stays.
+                    if imprisoned_by_foe && self.is_last_active(r) {
+                        let revealed = self.revealed(s, slot, Reveal::Disabled);
+                        if !revealed || self.sides[s].n_active == 1 {
+                            entry["maybeDisabled"] = json!(true);
+                        }
+                        if !revealed {
+                            entry["maybeLocked"] = json!(true);
+                        }
                     }
                     let can_switch = (self.sides[s].n_active..self.sides[s].mons.len())
                         .any(|i| !self.sides[s].mons[i].fainted);
@@ -285,7 +326,21 @@ impl Battle {
                             entry["maybeTrapped"] = json!(true);
                         }
                     }
-                    if !self.sides[s].mega_used && self.can_mega_evo(r).is_some() {
+                    // `updateDisabledRequest` takes the Mega Evolution away once every
+                    // move of the updated request is disabled.
+                    let updated = self.revealed(s, slot, Reveal::Disabled)
+                        || (0..m.moves.len())
+                            .any(|i| self.revealed(s, slot, Reveal::Move(i as u8)));
+                    let all_disabled = entry["moves"].as_array().is_some_and(|ms| {
+                        ms.iter()
+                            .all(|mv| mv["disabled"] == json!(true) || mv["id"] == "struggle")
+                    });
+                    // Struggle is a locked move: no Mega Evolution is offered with it.
+                    if !self.sides[s].mega_used
+                        && self.can_mega_evo(r).is_some()
+                        && !struggle_only
+                        && !(updated && all_disabled)
+                    {
                         entry["canMegaEvo"] = json!(true);
                     }
                     active.push(entry);
@@ -323,7 +378,8 @@ impl Battle {
                     "ident": format!("{}: {}", side.id(), m.name),
                     "details": self.details(s, i),
                     "condition": secret_health(m.hp, m.maxhp, m.status.id()),
-                    "active": m.is_active,
+                    // At team preview the first Pokémon already read as active.
+                    "active": m.is_active || (self.request == RequestState::TeamPreview && i < side.n_active),
                     "stats": stats,
                     "moves": m.moves.iter().map(|ms| self.dex.mv(ms.id).id.clone()).collect::<Vec<_>>(),
                     "baseAbility": self.dex.ability(m.base_ability).id,
@@ -425,7 +481,8 @@ impl Battle {
                 || (m.trapped == Trapped::Hidden
                     && (!self.is_last_active(r) || self.revealed(s, slot, Reveal::Trapped)))
         };
-        let revealed_disabled = PLAYER && self.revealed(s, slot, Reveal::Disabled);
+        let revealed_disabled =
+            PLAYER && side.n_active > 1 && self.revealed(s, slot, Reveal::Disabled);
         let player_struggle = PLAYER && (0..m.moves.len()).all(|i| self.move_shown_disabled(r, i));
         // Every move at every target, with and without Mega Evolution, then
         // Struggle or the switches.

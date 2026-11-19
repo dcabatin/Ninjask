@@ -27,6 +27,13 @@ impl Battle {
     /// Showdown `runSwitch` and `fieldEvent('SwitchIn')`: switch-in abilities
     /// of the Pokémon that just came in, fastest first.
     pub(crate) fn run_switch(&mut self, switchers: &[MonRef]) {
+        // The `tox` condition's `onSwitchIn`: the stage starts over when the
+        // `SwitchIn` event runs, after every switch of the batch is made.
+        for &r in switchers {
+            if self.mon(r).status == Status::Tox {
+                self.mon_mut(r).toxic_stage = 0;
+            }
+        }
         // speedOrder: all active Pokémon (fainted too) by speed, ties shuffled.
         let mut all: Small<MonRef> = Small::new();
         for s in 0..2 {
@@ -325,9 +332,6 @@ impl Battle {
         m.ability_order = ability_order;
         m.switch_flag = false;
         m.moved_this_turn = false;
-        if m.status == Status::Tox {
-            m.toxic_stage = 0;
-        }
         if let Some((vol, boosts)) = carried {
             // copyVolatileFrom starts with the newcomer's clearVolatile
             // (Champions: timesAttacked too): a revived Pokémon hit on the

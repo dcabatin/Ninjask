@@ -210,6 +210,11 @@ impl Battle {
         let Some(move_id) = move_id else {
             return;
         };
+        // Destiny Bond's onBeforeMove (priority -1): any other move removes it.
+        // The BeforeMove event runs before the move's beforeMoveCallback.
+        if self.dex.move_kind[move_id as usize] != MoveKind::DestinyBond {
+            self.mon_mut(r).vol.destiny_bond = false;
+        }
         // beforeMoveCallback: Focus Punch after a hit.
         if self.focus_punch_before_move_callback(r, move_id) {
             self.active_move.cur_move = None;
@@ -217,13 +222,17 @@ impl Battle {
             self.mon_mut(r).move_this_turn_result = Some(false);
             return;
         }
-        // Destiny Bond's onBeforeMove (priority -1): any other move removes it.
-        if self.dex.move_kind[move_id as usize] != MoveKind::DestinyBond {
-            self.mon_mut(r).vol.destiny_bond = false;
-        }
         // LockMove: the strike of a two-turn move costs no PP; Struggle has none.
         let locked = self.locked_move(r).is_some();
         if !locked && slot != STRUGGLE {
+            // `deductPP(move)` finds the slot by the move's id: the first one
+            // when a set holds a move twice.
+            let slot = self
+                .mon(r)
+                .moves
+                .iter()
+                .position(|x| x.id == move_id)
+                .unwrap_or(slot);
             // deductPP marks the slot used even when it has no PP left.
             self.mon_mut(r).moves[slot].used = true;
             if self.mon(r).moves[slot].pp == 0 {
@@ -660,6 +669,9 @@ impl Battle {
             && self.mon(r).vol.choice_lock.is_none()
             && !bounced
         {
+            // The Choice item's `onModifyMove` is `addVolatile('choicelock')`:
+            // a new volatile runs `TryAddVolatile`, whose sort draws on ties.
+            self.try_add_volatile_sort(r);
             self.mon_mut(r).vol.choice_lock = Some(move_id);
         }
         if self.mon(r).status == Status::Frz && self.defrosts(r, move_id) {
@@ -1550,8 +1562,12 @@ impl Battle {
     /// The move's target type at choice time (the request, `resolveAction`):
     /// Champions makes a non-Ghost's Curse target the user.
     pub(crate) fn move_target_at_choice(&self, r: MonRef, mv: &Move) -> Target {
-        if self.dex.move_kind[mv.idx as usize] == MoveKind::Curse && !self.is_ghost(r) {
+        let kind = self.dex.move_kind[mv.idx as usize];
+        if kind == MoveKind::Curse && !self.is_ghost(r) {
             Target::SelfTarget
+        } else if kind == MoveKind::PollenPuff && self.mon(r).vol.heal_block > 0 {
+            // `getMoves`: under Heal Block Pollen Puff may only target a foe.
+            Target::AdjacentFoe
         } else {
             mv.target
         }

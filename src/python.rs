@@ -330,6 +330,14 @@ impl PyBattle {
             .map_err(PyValueError::new_err)
     }
 
+    /// Take back the side's choice before the other side has chosen
+    /// (Showdown's `undoChoice`); raises ValueError when it can't be undone.
+    fn undo(&mut self, side: &str) -> PyResult<()> {
+        self.inner
+            .undo_choice(side_index(side)?)
+            .map_err(PyValueError::new_err)
+    }
+
     /// The side's legal choices in Showdown's choice syntax, as its request
     /// offers them: every ordered pick at team preview (the first two lead),
     /// else every joint move or switch choice, ally targets included. The

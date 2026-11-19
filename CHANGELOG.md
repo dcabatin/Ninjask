@@ -7,9 +7,9 @@
 Fixes from a new round of fuzzing: choice handling, which no earlier check
 reached, and the API with malformed input. Every seeded game gives the same
 logs and random draws as 0.4.0. The fingerprint moved from
-`fb8b1d107db9f213` to `b0fd9321971e9d79`: the logs and draws hash the same,
-the requests hash differs because a request alone now carries `noCancel` (see
-below).
+`fb8b1d107db9f213` to `41f8cd481eeb5caf`: the logs and draws hash the same,
+the requests hash differs because a request alone now carries `noCancel`, and a
+side's request no longer turns into "wait" once it has chosen (see below).
 
 ### Fixed
 
@@ -38,6 +38,9 @@ below).
   - The first refusal of a disabled move is "[Unavailable choice]" and marks
     the move in the request (`disabled`, `disabledSource`), also when the
     request showed it disabled.
+  - In singles a Pokémon Imprison may be hiding moves from stays "maybe
+    locked" after a refusal reveals a disabled move (`testfight` still tests
+    the Fight button; only outside singles does the reveal clear it).
 - **Requests.** A request with no counterpart (the other side has none)
   carries `noCancel: true`; one updated by a refusal carries `update: true`.
   A Pokémon that fainted this turn shows the disabled flags it had, and
@@ -67,6 +70,32 @@ below).
   with Showdown's now, and they match input for input.
 - A choice with the `max`/`dynamax` modifier gets Showdown's answers: its
   target type, and "Max Guard is disabled" under Taunt.
+
+- **Other formats** were never compared with Showdown, and are now (singles
+  `gen9championsbssregmc`, `gen9championsvgc2026regmb`, the open-team-sheets
+  format and the custom-game formats: tens of thousands of games on random,
+  pool and chaos teams, `NINJASK_FORMAT=...` for the scripts). Found and fixed:
+  in singles `getRandomTarget` picks the foe without a random draw, and
+  Imprison's `maybeDisabled` outlives a refusal and makes a choice
+  uncancellable; the open team sheets showed a gender the set left unset
+  instead of the one drawn.
+- `Battle.request(side)` stays the side's request after it has chosen, as in
+  Showdown, instead of becoming "wait".
+- `Battle.undo(side)` is Showdown's `undoChoice`: it takes a choice back,
+  unless a hidden trap or disable made it uncancellable, and reveals what a
+  hidden disable behind the chosen move hid.
+- Found by aiming games at the mechanics the random ones barely reach
+  (`scripts/report_coverage.py` lists them; `scripts/check_pairs.py` plays
+  every pair of the interaction-heavy ones, one on each side): PP is taken
+  from the first slot holding the move (a set with a move twice); Destiny
+  Bond ends in `BeforeMove`, before Focus Punch's own `beforeMoveCallback`; a
+  Healing Wish into a Pokémon whose status was already cured leaves the
+  status state alone (Rest's times after a Lum Berry).
+- Choice text is read with JavaScript's whitespace (the byte order mark counts,
+  U+0085 doesn't) and `toID` lowercases before it strips (a Kelvin sign is a
+  `k`); compared against Showdown with random Unicode in the choices.
+- `scripts/verify_engine.py` (the engine's own random numbers against
+  Showdown's distributions) passes on about 75,000 comparisons.
 
 ### Differs from Showdown
 

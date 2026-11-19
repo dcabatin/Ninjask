@@ -97,6 +97,9 @@ MIXED = [
     (41, 4691, "mixed"),  # no Pressure PP from a fainted Future Sight target
     (42, 5377, "wide"),  # dragIn's DragOut: Guard Dog gained by Wandering Spirit
     (9202, 64, "mixed"),  # Instruct repeating Endure or Protect: the volatile is already there
+    (952, 281, "mixed"),  # a Choice item's addVolatile runs TryAddVolatile, whose sort draws on ties
+    (1103, 1611, "mixed"),  # Ally Switch failing is NOT_FAIL: no AfterMoveSecondary (Berserk's flag)
+    (9602, 2611, "wide"),  # Destiny Bond ends in BeforeMove, before the move's own beforeMoveCallback (Focus Punch)
 ]
 
 

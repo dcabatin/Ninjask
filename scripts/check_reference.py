@@ -22,6 +22,7 @@ import difflib
 import json
 import multiprocessing
 import multiprocessing.util
+import os
 import random
 import re
 import sys
@@ -35,17 +36,29 @@ from ninjask import dex as engine_dex
 from ninjask import load as load_format
 from ninjask import focus_teams, supported_test_team, verification_teams
 from ninjask.refsim import Battle, RefSim, seed_from_int
+from ninjask.refsim import _spec as _refsim_spec
 
-FORMAT = "gen9championsvgc2026regmc"
+FORMAT = os.environ.get("NINJASK_FORMAT", "gen9championsvgc2026regmc")  # e.g. gen9championsbssregmc (singles)
 GAME_TYPE = load_format(FORMAT).game_type
 TURN_LIMIT = 150
 
 # Lines that carry no battle state: timestamps, format banners, interface, hints.
-SKIP = ("|t:|", "|gen|", "|tier|", "|rule|", "|j|", "|uhtml", "|inactive", "|gametype|", "|player|", "|-hint|")
+SKIP = ("|t:|", "|debug|", "|gen|", "|tier|", "|rule|", "|j|", "|uhtml", "|inactive", "|gametype|", "|player|", "|-hint|")
 
 
 def norm(lines: list[str]) -> list[str]:
     return [line for line in lines if line not in ("|", "") and not line.startswith(SKIP)]
+
+
+def active_summary(state: dict) -> str:
+    """The active Pokémon of a Showdown projection, for a divergence report."""
+    out = []
+    for side in state["sides"]:
+        for m in side["pokemon"]:
+            boosts = {k: v for k, v in m["boosts"].items() if v}
+            where = "active" if m["isActive"] else "bench"
+            out.append(f"{side['id']} {where:6s} {m['name']} ({m['species']}) hp={m['hp']}/{m['maxhp']} ability={m['ability']} item={m['item']} speed={m.get('speed')} boosts={boosts} vol={sorted(m['volatiles'])}")
+    return "\n  active before: " + "\n                 ".join(out)
 
 
 class Divergence(Exception):
@@ -106,6 +119,8 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
     """Play one game; returns (inputs, turn). Raises Divergence."""
     sd = Battle(sim, FORMAT, seed, ("Player 1", t1), ("Player 2", t2))
     eng = ninjask.Battle.reference(d, t1, t2, seed)
+    if _refsim_spec(FORMAT).open_team_sheets:
+        eng.show_team_sheets()  # Showdown shows the sheets at team preview
     eng.set_rng_trace(True)
     read = 0
     inputs = 0
@@ -113,15 +128,21 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
         obs = sd.start(omniscient=True, trace=True)
         requests = dict(obs.requests)
 
+        prev_state: dict = {}
+
         def check(where: str, o) -> None:
-            nonlocal read
+            nonlocal read, prev_state
             eng_lines = eng.log("omniscient", read)
             read += len(eng_lines)
             a, b = norm(o.logs["omniscient"]), norm(eng_lines)
-            sd_state, eng_state = sd.state(), json.loads(eng.projection())
+            sd_state, eng_state = sd.state(requests=True), json.loads(eng.projection())
+            sd_requests = sd_state.pop("_requests", {})
+            before_state, prev_state = prev_state, sd_state
             sd_seed, eng_seed = sd_state["prng"], eng.rng_seed
             sd_draws = o.rng_trace or []
-            eng_draws = [d for d in eng.rng_trace() if not d.startswith("#")]
+            sd_raw = list(sd_draws)
+            eng_raw = eng.rng_trace()
+            eng_draws = [d for d in eng_raw if not d.startswith("#")]
             if verbose:
                 print(f"--- {where}: {len(a)} lines, {len(sd_draws)} draws, rng {'same' if sd_seed == eng_seed else 'DIFFERENT'}")
                 for line in a:
@@ -140,11 +161,26 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                     kind = ("showdown draws more: " if len(sd_draws) > n else "engine draws more: ") + (site(extra[0]) if extra else "")
                 else:
                     kind = f"{site(sd_draws[first])}  vs  {site(eng_draws[first])}"
-                raise Divergence(f"{where}\n{diff}\nrng showdown {sd_seed}\nrng engine   {eng_seed}\n{draws}", kind)
+                raise Divergence(f"{where}\n{diff}\n{active_summary(before_state) if before_state else ''}\nrng showdown {sd_seed}\nrng engine   {eng_seed}\n{draws}\nengine trace tail (with its sort notes):\n  " + "\n  ".join(eng_raw[-14:]) + "\nshowdown trace tail (with its handler lists):\n  " + "\n  ".join(x[:260] for x in sd_raw[-8:]), kind)
             fields = state_diff(sd_state, eng_state)
             if fields:
                 kind = "state: " + re.sub(r"\[\d+\]", "[]", fields[0].split(":")[0])
                 raise Divergence(f"{where}\nstate projections differ:\n  " + "\n  ".join(fields[:20]), kind)
+            # Each side's request as Showdown holds it, against the engine's.
+            for side_id, theirs in sd_requests.items():
+                mine = eng.request(side_id)
+                mine = json.loads(mine) if mine else None
+                theirs = json.loads(json.dumps(theirs)) if theirs else None
+                for r in (mine, theirs):
+                    if r:
+                        r.pop("rqid", None)
+                if mine != theirs:
+                    fields = state_diff(theirs, mine)
+                    kind = "request held: " + re.sub(r"\[\d+\]", "[]", fields[0].split(":")[0]) if fields else "request held"
+                    who = [f"{sd_side['id']} {m['name']} ({m['species']}) ability={m['ability']} item={m['item']} types={m['types']} known={m['knownType']} vol={sorted(m['volatiles'])}"
+                           for sd_side in sd_state["sides"] for m in sd_side["pokemon"] if m["isActive"]]
+                    who += [f"{sd_side['id']} bench {m['name']} hp={m['hp']} fainted={m['fainted']}" for sd_side in sd_state["sides"] for m in sd_side["pokemon"] if not m["isActive"]]
+                    raise Divergence(f"{where}\n{side_id}'s request differs:\n  " + "\n  ".join(fields[:10]) + "\n  active: " + "\n          ".join(who), kind)
 
         check("start", obs)
         while not obs.ended and obs.turn < TURN_LIMIT:
@@ -156,26 +192,37 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                 choices = team_preview_choices(req) if req.get("teamPreview") else joint_choices(req, include_ally_targets=True, game_type=GAME_TYPE)
                 choice = rng.choice(choices)
                 obs = sd.choose(side, choice, omniscient=True)
+                refused_by_engine = False
+                try:
+                    eng.choose(side, choice)
+                except ValueError as e:
+                    refused_by_engine = str(e)
+                if bool(obs.accepted) == bool(refused_by_engine):
+                    raise Divergence(f"turn {obs.turn} {side} {choice!r}: showdown {'accepted' if obs.accepted else 'refused'} it, engine {'refused: ' + refused_by_engine if refused_by_engine else 'accepted'}", "acceptance")
                 # Something hidden from the player (Imprison's 'hidden' disable, a
                 # trap by an ability the request only calls maybeTrapped):
                 # the request offered the choice, Showdown refuses it and asks
                 # again with it marked. A player chooses again, as often as
-                # that happens; the engine never sees the refused choices.
+                # that happens, and the engine is sent each attempt too.
                 for _ in range(8):
                     if not (obs.errors.get(side) and "[Unavailable choice]" in obs.errors[side] and obs.requests.get(side)):
                         break
+                    check(f"turn {obs.turn} after the refused {side} {choice!r}", obs)
                     choice = rng.choice(joint_choices(obs.requests[side], include_ally_targets=True, game_type=GAME_TYPE))
                     obs = sd.choose(side, choice, omniscient=True)
+                    refused_by_engine = False
+                    try:
+                        eng.choose(side, choice)
+                    except ValueError as e:
+                        refused_by_engine = str(e)
+                    if bool(obs.accepted) == bool(refused_by_engine):
+                        raise Divergence(f"turn {obs.turn} {side} {choice!r}: showdown {'accepted' if obs.accepted else 'refused'} it, engine {'refused: ' + refused_by_engine if refused_by_engine else 'accepted'}", "acceptance")
                 if obs.errors.get(side):
                     raise Divergence(f"turn {obs.turn} {side} {choice!r}: Showdown rejected it: {obs.errors[side]}")
                 requests[side] = None
                 for s in ("p1", "p2"):
                     if obs.requests.get(s):
                         requests[s] = obs.requests[s]
-                try:
-                    eng.choose(side, choice)
-                except ValueError as e:
-                    raise Divergence(f"turn {obs.turn} {side} {choice!r}: the engine rejected it: {e}") from None
                 inputs += 1
                 check(f"turn {obs.turn} after {side} {choice!r}", obs)
                 acted = True

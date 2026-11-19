@@ -1294,6 +1294,12 @@ impl Battle {
             && (self.field.magic_room > 0 || self.has_ability(r, AbilityKind::Klutz))
     }
 
+    /// The held item's kind however it is ignored (a Pokémon off the field
+    /// still has its item, and its handlers still join a sort).
+    pub(crate) fn raw_item_kind(&self, r: MonRef) -> Option<ItemKind> {
+        self.mon(r).item.map(|i| self.dex.item_kind[i as usize])
+    }
+
     /// The held item's kind, Klutz or not (`getItem()`): the Choice lock
     /// reads it, and only stops enforcing itself while the item is ignored.
     pub(crate) fn held_item_kind(&self, r: MonRef) -> Option<ItemKind> {

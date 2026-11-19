@@ -502,8 +502,19 @@ function handle(msg) {
 		out.accepted = ok;
 		return out;
 	}
-	case 'state':
-		return project(getRecord(msg.id).battle);
+	case 'undo': {
+		const rec = getRecord(msg.id);
+		rec.battle.undoChoice(msg.side);
+		rec.battle.sendUpdates();
+		const out = observation(rec, msg.omniscient);
+		out.accepted = !out.errors[msg.side];
+		return out;
+	}
+	case 'state': {
+		const battle = getRecord(msg.id).battle;
+		// Each side's current request, as Showdown keeps it (not only when it is sent).
+		return { ...project(battle), _requests: Object.fromEntries(battle.sides.map(side => [side.id, side.activeRequest || null])) };
+	}
 	case 'branch':
 		return branch(msg);
 	case 'inputlog':

@@ -537,7 +537,9 @@ impl Battle {
     /// offensive and accuracy stages; on the user, the target's defensive
     /// and evasion stages. The holder's own stages stay.
     pub(crate) fn unaware_on_any_modify_boost(&self, r: MonRef) -> bool {
-        self.has_ability(r, AbilityKind::Unaware)
+        // `getAllActive` leaves out a Pokémon with no HP: a user that has
+        // blown itself up (HP set to 0 before the hits) has no handlers.
+        self.mon(r).hp > 0 && self.has_ability(r, AbilityKind::Unaware)
     }
 
     /// The attack and defense stages `getDamage` uses, after Unaware.

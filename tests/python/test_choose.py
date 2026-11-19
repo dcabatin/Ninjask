@@ -263,9 +263,25 @@ def test_a_foe_that_lost_shadow_tag_still_makes_a_switch_uncancellable(choices):
     (here a Mega Gengar after Worry Seed), and a switch chosen then can't be undone."""
     t1 = "]".join(f"x{i}|Alakazam||innerfocus|WorrySeed,SkillSwap,Recover,Psychic|Timid|||||50|" for i in range(6))
     t2 = "]".join(f"y{i}|Gengar|gengarite|cursedbody|ShadowBall,Protect,Recover,Round|Timid|||||50|" for i in range(6))
-    found, seen = _custom_games(choices, t1, t2, 60, "gengar")
-    assert not found, found[:2]
-    assert any("Can't undo" in s for s in seen)
+    from ninjask.refsim import Battle as RefBattle, RefSim, seed_from_int
+
+    d = ninjask.dex(FORMAT)
+    with RefSim() as sim:
+        rb = RefBattle(sim, FORMAT, seed_from_int(3, "gengar"), ("p1", t1), ("p2", t2))
+        rb.start()
+        eb = ninjask.Battle(d, t1, t2, seed=3)
+        script = [("p1", "default"), ("p2", "default"), ("p1", "move 1 1, move 1 1"), ("p2", "move 3 mega, move 3")]
+        for side, text in script:
+            rb.choose(side, text)
+            eb.choose(side, text)
+        assert eb.turn == 2
+        ref = rb.choose("p1", "switch 3, switch 4")
+        eb.choose("p1", "switch 3, switch 4")
+        assert ref.errors["p1"] is None
+        ref = rb.undo("p1")
+        assert ref.errors["p1"] and "Can't undo" in ref.errors["p1"]
+        with pytest.raises(ValueError, match="Can't undo"):
+            eb.undo("p1")
 
 
 def test_only_one_team_choice_per_input(d, teams):
@@ -321,3 +337,133 @@ def test_an_imported_battle_draws_what_the_original_would(d, teams):
                 else:
                     battle.choose(side, "default")
     assert checked > 100
+
+
+def test_a_request_is_the_same_after_the_side_has_chosen(d, teams):
+    """Showdown keeps a side's request until the turn runs; only a side with
+    nothing to decide gets "wait"."""
+    battle = at_moves(d, teams)
+    before = battle.request("p1")
+    assert json.loads(before).get("wait") is None
+    battle.choose("p1", battle.legal_choices("p1")[0])
+    assert battle.request("p1") == before
+    assert not battle.needs_choice("p1")
+
+
+@pytest.mark.parametrize(
+    "format_id",
+    [
+        "gen9championsbssregmc",  # singles: Showdown's getRandomTarget draws nothing there
+        "gen9championsvgc2026regmb",
+        "gen9championsvgc2026regmcots",  # the open team sheets show the gender drawn
+    ],
+)
+def test_other_formats_match_showdown(format_id):
+    if not (SHOWDOWN_DIR / "dist").exists():
+        pytest.skip("Pokémon Showdown not built (scripts/setup_showdown.sh)")
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "NINJASK_FORMAT": format_id}
+    for script, extra in (("check_reference.py", ["--synthetic"]), ("check_chaos.py", ["--mix", "wide"])):
+        done = subprocess.run(
+            [sys.executable, str(ENGINE_ROOT / "scripts" / script), "--games", "25", "--workers", "2", "--seed", "5", *extra],
+            capture_output=True, text=True, env=env, timeout=900,
+        )
+        assert done.returncode == 0, done.stdout[-2000:] + done.stderr[-500:]
+
+
+def test_undo_takes_a_choice_back_and_a_hidden_trap_stops_it(d, teams):
+    battle = at_moves(d, teams)
+    battle.undo("p1")  # nothing chosen: nothing happens
+    battle.choose("p1", battle.legal_choices("p1")[0])
+    assert not battle.needs_choice("p1")
+    battle.undo("p1")
+    assert battle.needs_choice("p1")
+    battle.choose("p1", battle.legal_choices("p1")[-1])
+    battle.choose("p2", "default")
+    assert battle.turn == 2
+    battle.undo("p1")  # no request now: nothing to undo, no error
+
+
+def test_the_chaos_games_other_formats_once_diverged_on(tmp_path):
+    """(format, seed, game): a Healing Wish on a Pokémon whose Lum Berry cured Rest
+    left Rest's times in the status state, as Showdown does (singles, then in any format)."""
+    if not (SHOWDOWN_DIR / "dist").exists():
+        pytest.skip("Pokémon Showdown not built (scripts/setup_showdown.sh)")
+    import os
+    import subprocess
+    import sys
+
+    for format_id, seed, game in (("gen9championsbssregmc", 703, 1624), ("gen9championsbssregmc", 703, 1639)):
+        done = subprocess.run(
+            [sys.executable, str(ENGINE_ROOT / "scripts" / "check_chaos.py"), "--game", str(game), "--seed", str(seed), "--mix", "mixed"],
+            capture_output=True, text=True, env={**os.environ, "NINJASK_FORMAT": format_id}, timeout=600,
+        )
+        assert done.returncode == 0 and "matched" in done.stdout, done.stdout[-1500:]
+
+
+def _mk(name, species, item, ability, moves):
+    return f"{name}|{species}|{item}|{ability}|{moves}|Timid|||||50|"
+
+
+def _team(*mons):
+    return "]".join(_mk(*m) for m in mons)
+
+
+def test_an_exploding_unaware_user_has_no_handlers_left(choices):
+    """Misty Explosion sets its user's HP to 0 before the damage, and a Pokémon with
+    no HP has no `onAnyModifyBoost`: its Unaware doesn't ignore the target's stages."""
+    t1 = _team(
+        ("c", "Clefable", "", "unaware", "MistyExplosion,Protect,Moonlight,IceBeam"),
+        ("v", "Vivillon", "lifeorb", "compoundeyes", "Round,Protect,AirSlash,Tailwind"),
+        ("a", "Alakazam", "", "innerfocus", "Psychic,Protect,Recover,ShadowBall"),
+        ("b", "Absol", "", "pressure", "Protect,Recover,NightSlash,Psychic"),
+    )
+    t2 = _team(
+        ("s", "Slowbro", "", "regenerator", "Amnesia,Protect,Surf,Psychic"),
+        ("n", "Noivern", "lifeorb", "infiltrator", "Tailwind,Protect,AirSlash,Uturn"),
+        ("g", "Gengar", "", "cursedbody", "Protect,ShadowBall,Hypnosis,Recover"),
+        ("h", "Hatterene", "", "magicbounce", "Protect,Psychic,Recover,DazzlingGleam"),
+    )
+    found, _ = _custom_games(choices, t1, t2, 80, "unaware")
+    assert not found, found[:2]
+
+
+def test_run_away_does_not_clear_what_a_mega_gengars_species_may_have(choices):
+    """Showdown compares an ability's name with an id, so a foe's species that may have
+    Shadow Tag marks the Pokémon `maybeTrapped` after Run Away has cleared it."""
+    t1 = _team(
+        ("r", "Rillaboom", "", "overgrow", "DrumBeating,FakeOut,BulkUp,LeafStorm"),
+        ("t", "Thievul", "payapaberry", "runaway", "QuickGuard,Attract,DoubleTeam,HyperBeam"),
+        ("m", "Manectric", "", "static", "ElectricTerrain,Thunder,Crunch,HyperVoice"),
+        ("s", "Steelix", "", "rockhead", "MagnetRise,GigaImpact,HeadSmash,IronHead"),
+    )
+    t2 = _team(
+        ("v", "Vivillon-Jungle", "", "friendguard", "Tailwind,CalmMind,SkitterSmack,EnergyBall"),
+        ("g", "Gengar", "gengarite", "cursedbody", "TrickRoom,DestinyBond,Hypnosis,DazzlingGleam"),
+        ("k", "Slowking-Galar", "", "owntempo", "PsychUp,WeatherBall,Amnesia,FoulPlay"),
+        ("c", "Castform", "focussash", "forecast", "GuardSwap,IcyWind,IceBeam,ChillingWater"),
+    )
+    found, _ = _custom_games(choices, t1, t2, 80, "runaway")
+    assert not found, found[:2]
+
+
+def test_a_benched_future_sight_users_item_still_joins_the_damage_sort(choices):
+    """Two Vivillon formes of one Speed tie, a benched Future Sight user's Life Orb against
+    the target's Haban Berry, and Showdown draws to break it."""
+    t1 = _team(
+        ("a", "Vivillon-Archipelago", "habanberry", "cursedbody", "Round,Protect,AirSlash,Tailwind"),
+        ("b", "Sceptile", "shellbell", "keeneye", "Protect,Recover,Slash,Surf"),
+        ("c", "Ditto", "silkscarf", "imposter", "Transform"),
+        ("d", "Sinistcha", "ironball", "firemane", "Protect,Recover,Psychic,ShadowBall"),
+    )
+    t2 = _team(
+        ("e", "Pyroar", "shedshell", "keeneye", "Protect,Recover,HeatWave,Psychic"),
+        ("f", "Arbok", "quickclaw", "friendguard", "Protect,Recover,Crunch,Psychic"),
+        ("g", "Vivillon-Savanna", "lifeorb", "armortail", "ForestsCurse,FutureSight,PowerSwap,MysticalFire"),
+        ("h", "Krookodile", "lifeorb", "sweetveil", "Haze,Snore,BurningJealousy,EnergyBall"),
+    )
+    found, _ = _custom_games(choices, t1, t2, 80, "futuresight")
+    assert not found, found[:2]

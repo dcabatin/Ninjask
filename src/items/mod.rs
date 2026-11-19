@@ -375,7 +375,7 @@ impl Battle {
         }
         // Items are collected even while ignored (Magic Room, Klutz), and
         // checked when they run.
-        match self.held_item_kind(src) {
+        match self.raw_item_kind(src) {
             Some(ItemKind::LifeOrb) => hs.push((H::LifeOrb, key(speed, 8))),
             Some(ItemKind::ExpertBelt) => hs.push((H::ExpertBelt, key(speed, 8))),
             _ => {}
@@ -410,7 +410,7 @@ impl Battle {
         {
             hs.push((H::TargetAbility, key(speed, 7)));
         }
-        if matches!(self.held_item_kind(tgt), Some(ItemKind::ResistBerry(_))) {
+        if matches!(self.raw_item_kind(tgt), Some(ItemKind::ResistBerry(_))) {
             hs.push((H::ResistBerry, key(speed, 8)));
         }
         for s in 0..2 {

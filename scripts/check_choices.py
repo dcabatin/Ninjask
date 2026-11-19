@@ -51,6 +51,7 @@ _spec.loader.exec_module(cr)
 FORMAT = cr.FORMAT
 Divergence = cr.Divergence
 
+UNDO = "\0undo"  # an `undo` in a game's history
 FOCUS = ("imprison", "shadowtag", "meanlook", "block", "fairylock", "whirlpool", "firespin", "sandtomb", "infestation")
 
 
@@ -91,6 +92,18 @@ def weird_choice(req: dict, rng: random.Random) -> str:
         sep = rng.choice([" ", " ", " ", "  ", "\t"])
         return kind + sep + data + tail
 
+    if rng.random() < 0.08:
+        # Anything at all: random code points (no lone surrogates, which Python can't hand over),
+        # mixed with the words of the grammar so that some parts get past the first check.
+        words = ["move", "switch", "team", "pass", "default", "shift", "1", "2", "3", ",", " ", "mega", "-1", "[", "]"]
+        pieces = []
+        for _ in range(rng.randrange(1, 12)):
+            if rng.random() < 0.5:
+                pieces.append(rng.choice(words))
+            else:
+                c = rng.choice([rng.randrange(0x20, 0x250), rng.randrange(0x2000, 0x2070), rng.randrange(0xfe00, 0xff70), rng.randrange(0x1f300, 0x1f6ff), rng.randrange(0, 0x20)])
+                pieces.append(chr(c))
+        return "".join(pieces)
     n = rng.choice([1, 1, 2, 2, 2, 3, 4])
     if req.get("teamPreview") and rng.random() < 0.3:
         return part() if rng.random() < 0.5 else "team " + rng.choice(["1234", "4321", "12", "[1,2,3,4]", "1,2,3,4", "0", "11", "[1,2,3,4,5]"])
@@ -101,7 +114,21 @@ def weird_choice(req: dict, rng: random.Random) -> str:
         if more.startswith("team") or out.lstrip().startswith("team"):
             break  # Showdown applies two team parts twice, in a tie-broken order: not worth reproducing
         out += rng.choice(seps) + more
-    return rng.choice(["", "", "", " ", "\n"]) + out
+    out = rng.choice(["", "", "", " ", "\n"]) + out
+    if rng.random() < 0.35:
+        # Characters JavaScript and Rust treat differently: whitespace (BOM, NEL, line separators),
+        # letters that lowercase to ASCII, fullwidth digits, zero-width marks.
+        odd = ["\u00a0", "\ufeff", "\u0085", "\u2028", "\u2029", "\u2003", "\u200b", "\u180e", "\x0b", "\x0c", "\u1680", "\u3000",
+               "\u0130", "\u212a", "\uff11", "\uff12", "\u00e9", "\u0661", "\u1f600"]
+        chars = list(out)
+        for _ in range(rng.choice([1, 1, 2, 3])):
+            i = rng.randrange(len(chars) + 1)
+            if chars and rng.random() < 0.5 and i < len(chars) and chars[i] in " ,":
+                chars[i] = rng.choice(odd)
+            else:
+                chars.insert(i, rng.choice(odd))
+        out = "".join(chars)
+    return out
 
 
 def describe(g: "Game", side: str | None = None) -> str:
@@ -113,7 +140,7 @@ def describe(g: "Game", side: str | None = None) -> str:
 def _describe(g: "Game") -> str:
     """The active Pokémon of both sides in Showdown, for a report."""
     out = []
-    for sd_side in g.sd.state()["sides"]:
+    for sd_side in g.sd.state(requests=True)["sides"]:
         for mon in sd_side["pokemon"]:
             if mon["isActive"]:
                 moves = ",".join(f"{m['id']}{'!' if m['disabled'] else ''}{'(0pp)' if m['pp'] == 0 else ''}" for m in mon["moves"])
@@ -145,6 +172,7 @@ class Game:
     def __init__(self, sim: RefSim, d, seed: str, t1: str, t2: str) -> None:
         self.sim, self.d, self.seed, self.t1, self.t2 = sim, d, seed, t1, t2
         self.history: list[tuple[str, str]] = []
+        self.base_req: dict = {}
         self.reset()
 
     def reset(self) -> None:
@@ -154,6 +182,18 @@ class Game:
         self.obs = self.sd.start(omniscient=True, trace=False)
         self.requests = dict(self.obs.requests)
         for side, choice in self.history:
+            if choice == UNDO:
+                self.obs = self.sd.undo(side, omniscient=True)
+                try:
+                    self.eng.undo(side)
+                except ValueError:
+                    pass
+                for s in ("p1", "p2"):
+                    if self.obs.requests.get(s):
+                        self.requests[s] = self.obs.requests[s]
+                if not self.obs.errors.get(side):
+                    self.requests[side] = self.requests.get(side) or self.base_req.get(side)
+                continue
             self.obs = self.sd.choose(side, choice, omniscient=True)
             try:
                 self.eng.choose(side, choice)
@@ -183,11 +223,22 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
             eng_lines = g.eng.log("omniscient", g.read)
             g.read += len(eng_lines)
             a, b = cr.norm(g.obs.logs["omniscient"]), cr.norm(eng_lines)
-            sd_state, eng_state = g.sd.state(), json.loads(g.eng.projection())
+            sd_state, eng_state = g.sd.state(requests=True), json.loads(g.eng.projection())
+            sd_requests = sd_state.pop("_requests", {})
             if a != b or sd_state["prng"] != g.eng.rng_seed:
                 import difflib
                 diff = "\n".join(difflib.unified_diff(a, b, "showdown", "engine", lineterm="", n=1))
                 raise Divergence(f"{where}\nlogs differ:\n{diff}\nrng showdown {sd_state['prng']} engine {g.eng.rng_seed}", "log after a choice")
+            for side_id, theirs in sd_requests.items():
+                mine = g.eng.request(side_id)
+                mine = json.loads(mine) if mine else None
+                theirs = json.loads(json.dumps(theirs)) if theirs else None
+                for r in (mine, theirs):
+                    if r:
+                        r.pop("rqid", None)
+                if mine != theirs:
+                    diff = cr.state_diff(theirs, mine)
+                    raise Divergence(f"{where}\n{side_id}'s held request differs:\n  " + "\n  ".join(diff[:8]), "request held: " + (diff[0].split(":")[0] if diff else "?"))
             fields = cr.state_diff(sd_state, eng_state)
             if fields:
                 raise Divergence(f"{where}\nstate projections differ:\n  " + "\n  ".join(fields[:20]) + "\n      " + describe(g), "state: " + fields[0].split(":")[0])
@@ -201,6 +252,7 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                 req = g.requests.get(side)
                 if not req or req.get("wait"):
                     continue
+                g.base_req[side] = req
                 attempts = rng.choice([1, 1, 2, 3, 4, 6])
                 answered = False
                 for attempt in range(attempts + 8):
@@ -211,14 +263,22 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                     if not forced and rng.random() < 0.75:
                         choice = mutate(choice, req, rng)
                     g.read = len(g.eng.log("omniscient", 0))  # compare only what this attempt logs
-                    obs = g.sd.choose(side, choice, omniscient=True)
+                    undo = not forced and rng.random() < 0.12 and attempt > 0
+                    if undo:
+                        choice = UNDO
+                        obs = g.sd.undo(side, omniscient=True)
+                    else:
+                        obs = g.sd.choose(side, choice, omniscient=True)
                     g.obs = obs
                     try:
-                        g.eng.choose(side, choice)
+                        if undo:
+                            g.eng.undo(side)
+                        else:
+                            g.eng.choose(side, choice)
                         eng_err = None
                     except ValueError as e:
                         eng_err = str(e)
-                    where = f"turn {obs.turn} {side} attempt {attempt} {choice!r}"
+                    where = f"turn {obs.turn} {side} attempt {attempt} {'undo' if undo else repr(choice)}"
                     sd_err = obs.errors.get(side) if not obs.accepted else None
                     stats.append(re.sub(r"[0-9]+|\"[^\"]*\"|'[^']*'|: [A-Z][^ ]* [^ ]*", "#", (sd_err or "accepted").replace("[Unavailable choice]", "UNAVAILABLE").replace("[Invalid choice]", ""))[:70])
                     problem = None
@@ -266,6 +326,10 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                     for s in ("p1", "p2"):
                         if obs.requests.get(s):
                             g.requests[s] = obs.requests[s]
+                    if undo:
+                        if obs.accepted:
+                            g.requests[side] = obs.requests.get(side) or g.requests.get(side) or g.base_req.get(side)
+                        continue
                     if obs.accepted:
                         g.requests[side] = None  # answered, unless the turn ran and sent a new one
                         for s in ("p1", "p2"):
@@ -277,6 +341,8 @@ def play(sim: RefSim, d, seed: str, t1: str, t2: str, rng: random.Random, verbos
                     if obs.accepted and (forced or attempt + 1 >= attempts or rng.random() < 0.5):
                         answered = True
                         break
+                if not answered and not g.obs.ended and any(c == UNDO for _, c in g.history):
+                    return inputs  # the request the checker kept for a side may be one an undo left behind
                 if not answered and not g.obs.ended:
                     found.append(("stuck", f"turn {g.obs.turn} {side}: no legal choice was accepted; last error {g.obs.errors.get(side)!r}; request {json.dumps(g.requests.get(side))[:300]}"))
                     return inputs

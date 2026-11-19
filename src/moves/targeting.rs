@@ -42,6 +42,9 @@ impl Battle {
             | Target::AllySide
             | Target::AllyTeam
             | Target::AdjacentAllyOrSelf => Some(r),
+            // Singles: no ally; the foe in its slot, with no draw.
+            Target::AdjacentAlly if self.sides[r.0].n_active == 1 => None,
+            _ if self.sides[r.0].n_active == 1 => self.active(1 - r.0, 0),
             Target::AdjacentAlly => {
                 let allies = if self.mon(r).fainted {
                     ActiveList::new()
